@@ -39,6 +39,41 @@ DocVQA corrupted 1000:
 
 Interpretation: the early DPO + GRPO pilots did not improve over the DPO baseline enough to justify mixing them into the DPO claim. GRPO is still worth testing separately, but the reward must be more carefully aligned with text-bias reduction.
 
+## Disjoint Split Results
+
+Protocol:
+
+- train-mining: DocVQA corrupted, seed 0, offset 0, 800 examples;
+- held-out test: DocVQA corrupted, seed 0, offset 800, 200 examples;
+- preservation: DocVQA match 100 and irrelevant 100;
+- GPU: RTX 6000 Ada.
+
+Held-out corrupted 200:
+
+| Variant | Init | Steps | LR | Accuracy | Incorrect aux-hit | Corrected / Regressed vs base |
+|---|---|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | - | - | - | 0.715 | 89.5% | - |
+| GRPO-only v1 | base | 100 | 2e-6 | 0.710 | 89.7% | 0 / 1 |
+| GRPO-only v2 | base | 300 | 1e-5 | 0.705 | 89.8% | 0 / 2 |
+| Text-following span DPO | base | 700 | 1e-5 | 0.900 | 55.0% | 37 / 0 |
+| Span DPO -> GRPO v2 | span DPO | 150 | 2e-6 | 0.900 | 60.0% | 37 / 0 |
+
+Preservation:
+
+| Variant | Match 100 | Irrelevant 100 |
+|---|---:|---:|
+| GRPO-only v1 | 1.00 | 0.96 |
+| GRPO-only v2 | 1.00 | 0.96 |
+| Span DPO -> GRPO v2 | 1.00 | 0.96 |
+
+Training-signal observation:
+
+- GRPO-only v2 generated correct sampled answers only about 0-15% of the time during training.
+- Its predictions barely moved from base: 196/200 held-out predictions were unchanged, with 0 corrections and 2 regressions.
+- DPO -> GRPO v2 generated more correct samples during training, but it did not improve held-out accuracy over DPO. It changed only 3/200 held-out predictions relative to DPO, with 0 corrections and 0 regressions.
+
+Interpretation: under the current sampled-answer reward, pure GRPO is too sparse to overcome the base model's text-following behavior. DPO remains the effective intervention. GRPO may still be useful as a refinement stage, but only if the reward is made more discriminative than the current answer-match plus aux-copy penalty.
+
 ## Current Reward Sketch
 
 `train_grpo_qwen3vl_lora.py` gives reward for:
@@ -46,24 +81,30 @@ Interpretation: the early DPO + GRPO pilots did not improve over the DPO baselin
 - matching the image-grounded chosen answer;
 - avoiding the rejected answer mined from corrupted auxiliary text;
 - avoiding high-confidence misleading spans from the corrupted auxiliary text;
+- avoiding generated answers that appear in the corrupted auxiliary text;
 - producing a short answer-like completion.
 
-This is a starting point, not a final reward. The next version should separate reward terms in logs so we can see whether improvements come from correctness, lower text copying, or just shorter outputs.
+The trainer now logs reward components (`correct_gen`, `rejected`, `span`, `aux`, `answer_like`) so failures can be diagnosed instead of only reading final accuracy.
 
 ## Recommended Next Experiments
 
-1. GRPO-only on the disjoint split.
+1. Repeat the disjoint split with additional seeds.
 
-   Use the same train-mining and held-out split as text-following span DPO:
+   The seed 0 split is strong but still only one held-out partition. Repeat seed 1 and seed 2 before treating the DPO advantage as stable.
 
-   - train-mining: seed 0, offset 0, 800 examples;
-   - held-out test: seed 0, offset 800, 200 examples.
+2. Improve GRPO reward density.
 
-2. Span-focused reward.
+   Pure GRPO needs more frequent useful reward than exact answer matching. Candidate directions:
+
+   - reward image-grounded answer equivalence using ANLS/token similarity, not only exact match;
+   - use a verifier or judge reward that compares image evidence against the generated answer;
+   - add a curriculum: begin from easier/high-confidence rows where the base model samples the correct answer at least once.
+
+3. Span-focused penalty.
 
    Penalize generated answers that match any mined misleading span from corrupted auxiliary text, not only the single base rejected answer.
 
-3. Multi-objective reporting.
+4. Multi-objective reporting.
 
    Report all of these on the held-out test slice:
 

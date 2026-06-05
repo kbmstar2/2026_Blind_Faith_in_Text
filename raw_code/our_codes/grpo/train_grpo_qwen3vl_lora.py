@@ -195,37 +195,56 @@ def clean_completion(text):
     return text
 
 
-def compute_reward(ex, completion):
+def compute_reward_parts(ex, completion, args):
     chosen = [ex["chosen"]]
     rejected = ex.get("rejected", "")
     question = ex.get("prompt", "").split("----------")[-1]
     aux_text = extract_aux_text(ex.get("prompt", ""))
     candidates = mine_misleading_candidates(aux_text, chosen, question, rejected=rejected)
 
-    reward = 0.0
     correct = answer_match(completion, chosen)
     rejected_match = bool(rejected and answer_match(completion, [rejected]))
+    aux_match = answer_in_text(completion, aux_text)
     high_conf_candidates = [cand for cand in candidates if high_confidence_candidate(cand)]
     high_conf_match = any(answer_match(completion, [cand]) for cand in high_conf_candidates)
 
+    reward = 0.0
     if correct:
-        reward += 1.5
+        reward += args.correct_reward
     else:
-        reward -= 0.05
+        reward -= args.wrong_penalty
 
     if not correct and rejected_match:
-        reward -= 0.8
+        reward -= args.rejected_penalty
     elif not correct and high_conf_match:
-        reward -= 0.3
+        reward -= args.span_penalty
+
+    if not correct and aux_match:
+        reward -= args.aux_copy_penalty
+    elif not correct and completion:
+        reward += args.aux_free_reward
 
     if not completion:
-        reward -= 0.5
+        reward -= args.empty_penalty
     word_count = len(completion.split())
     if 1 <= word_count <= 6:
-        reward += 0.1
+        reward += args.format_reward
     elif word_count > 8:
-        reward -= 0.1
-    return reward
+        reward -= args.long_penalty
+
+    return {
+        "reward": reward,
+        "correct": float(correct),
+        "rejected_match": float(rejected_match),
+        "high_conf_match": float(high_conf_match),
+        "aux_match": float(aux_match),
+        "empty": float(not completion),
+        "answer_like": float(1 <= word_count <= 6),
+    }
+
+
+def compute_reward(ex, completion, args):
+    return compute_reward_parts(ex, completion, args)["reward"]
 
 
 def collate(rows):
@@ -246,6 +265,15 @@ def parse_args():
     parser.add_argument("--max_new_tokens", type=int, default=16)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top_p", type=float, default=0.9)
+    parser.add_argument("--correct_reward", type=float, default=2.5)
+    parser.add_argument("--wrong_penalty", type=float, default=0.1)
+    parser.add_argument("--rejected_penalty", type=float, default=1.2)
+    parser.add_argument("--span_penalty", type=float, default=0.7)
+    parser.add_argument("--aux_copy_penalty", type=float, default=0.6)
+    parser.add_argument("--aux_free_reward", type=float, default=0.15)
+    parser.add_argument("--empty_penalty", type=float, default=0.5)
+    parser.add_argument("--format_reward", type=float, default=0.1)
+    parser.add_argument("--long_penalty", type=float, default=0.1)
     parser.add_argument("--lora_r", type=int, default=8)
     parser.add_argument("--lora_alpha", type=int, default=16)
     parser.add_argument("--max_length", type=int, default=0)
@@ -305,12 +333,20 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     step = 0
-    running = {"loss": 0.0, "reward": 0.0, "correct": 0.0}
+    running = {
+        "loss": 0.0,
+        "reward": 0.0,
+        "correct": 0.0,
+        "rejected_match": 0.0,
+        "high_conf_match": 0.0,
+        "aux_match": 0.0,
+        "answer_like": 0.0,
+    }
     optimizer.zero_grad(set_to_none=True)
 
     while step < args.max_steps:
         for batch_examples in tqdm(loader, desc=f"grpo step {step}/{args.max_steps}"):
-            all_examples, completions, rewards = [], [], []
+            all_examples, completions, rewards, reward_parts = [], [], [], []
             for ex in batch_examples:
                 gens = generate_completions(
                     policy, processor, ex, device, args.num_generations, args.max_new_tokens, args.temperature, args.top_p
@@ -318,7 +354,9 @@ def main():
                 for gen in gens:
                     all_examples.append(ex)
                     completions.append(gen)
-                    rewards.append(compute_reward(ex, gen))
+                    parts = compute_reward_parts(ex, gen, args)
+                    reward_parts.append(parts)
+                    rewards.append(parts["reward"])
 
             rewards_t = torch.tensor(rewards, device=device, dtype=torch.float32)
             grouped = rewards_t.view(len(batch_examples), args.num_generations)
@@ -338,7 +376,8 @@ def main():
 
             running["loss"] += float(loss.detach())
             running["reward"] += float(rewards_t.mean())
-            running["correct"] += float(sum(answer_match(c, [ex["chosen"]]) for c, ex in zip(completions, all_examples)) / len(completions))
+            for name in ["correct", "rejected_match", "high_conf_match", "aux_match", "answer_like"]:
+                running[name] += sum(parts[name] for parts in reward_parts) / len(reward_parts)
 
             if (step + 1) % args.grad_accum == 0:
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -349,9 +388,11 @@ def main():
             if step % 10 == 0:
                 print(
                     f"step={step} loss={running['loss']/10:.4f} "
-                    f"reward={running['reward']/10:.4f} correct_gen={running['correct']/10:.4f}"
+                    f"reward={running['reward']/10:.4f} correct_gen={running['correct']/10:.4f} "
+                    f"rejected={running['rejected_match']/10:.4f} span={running['high_conf_match']/10:.4f} "
+                    f"aux={running['aux_match']/10:.4f} answer_like={running['answer_like']/10:.4f}"
                 )
-                running = {"loss": 0.0, "reward": 0.0, "correct": 0.0}
+                running = {k: 0.0 for k in running}
             if args.save_every and step % args.save_every == 0:
                 policy.save_pretrained(output_dir / f"checkpoint-{step}")
                 processor.save_pretrained(output_dir / f"checkpoint-{step}")
