@@ -94,11 +94,37 @@ Preservation on seed 1:
 | match 100 | 0.99 |
 | irrelevant 100 | 0.97 |
 
+## VQAv2 Transfer Check
+
+We also ran the same disjoint split protocol on VQAv2 to test whether the method is specific to document images.
+
+- Train-mining slice: seed 0, offset 0, 800 examples
+- Held-out test slice: seed 0, offset 800, 200 examples
+- Extracted text-following rows: 192
+- DPO train/test rows: 172 / 20
+- Same Qwen3-VL-8B and DPO hyperparameters as DocVQA
+
+Held-out corrupted 200, VQAv2 seed 0:
+
+| Model | Accuracy | Incorrect aux-hit | Corrected / Regressed |
+|---|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.545 | 65.9% | - |
+| Text-following span DPO | 0.645 | 40.8% | 22 / 2 |
+
+Preservation on VQAv2 seed 0:
+
+| Eval | Accuracy |
+|---|---:|
+| match 100 | 0.90 |
+| irrelevant 100 | 0.75 |
+
+This is a positive transfer signal but weaker than DocVQA. The method reduces copying from corrupted auxiliary text and improves held-out corrupted accuracy, but the lower irrelevant score suggests that VQAv2 needs either a stronger preservation term, mixed clean/match data, or a less aggressive DPO recipe.
+
 ## Interpretation
 
 The result suggests that a large fraction of corrupted-context failures are conflict-resolution failures: the model follows a plausible textual answer even when the image supports a different answer. Filtering training pairs to this high-precision failure type gives a cleaner preference signal than using all base errors.
 
-The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The most important next validation is to repeat the same split protocol on other subsets such as VQAv2, and to keep GRPO-only and DPO-to-GRPO experiments reported separately.
+The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The VQAv2 transfer check shows the same direction but weaker preservation, so the next method step should add explicit preservation or mixed-task regularization before claiming broad generalization. GRPO-only and DPO-to-GRPO experiments should remain reported separately.
 
 ## Example Commands
 
