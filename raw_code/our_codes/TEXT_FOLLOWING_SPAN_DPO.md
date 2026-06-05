@@ -84,7 +84,7 @@ The most important next validation is to repeat the same split protocol across a
 Build text-following span DPO data:
 
 ```bash
-python make_text_following_span_dpo.py \
+python our_codes/make_text_following_span_dpo.py \
   --eval_file results/qwen3vl8b_base_corrupted_1000.jsonl \
   --out_dir data/dpo_DocVQA_text_follow_span_base_errors_corrupted_1000 \
   --subset DocVQA \
@@ -95,7 +95,7 @@ python make_text_following_span_dpo.py \
 Train DPO:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python train_dpo_qwen2vl_lora.py \
+CUDA_VISIBLE_DEVICES=0 python our_codes/train_dpo_qwen2vl_lora.py \
   --dataset_dir data/dpo_DocVQA_text_follow_span_base_errors_corrupted_1000 \
   --model_name Qwen/Qwen3-VL-8B-Instruct \
   --output_dir checkpoints/qwen3vl8b_dpo_text_follow_span_r8_lr1e5_700_ada \
