@@ -360,7 +360,7 @@ class AdapterModel:
         return text, logprobs
 
 
-def run_eval(ds_name, model_type, model_name, max_samples=200, out_file='eval_results.jsonl', model_kwargs=None, seed=0, subset='', input_type='text-only', text_type_filter='', use_original_question=False):
+def run_eval(ds_name, model_type, model_name, max_samples=200, sample_offset=0, out_file='eval_results.jsonl', model_kwargs=None, seed=0, subset='', input_type='text-only', text_type_filter='', use_original_question=False):
     # load dataset
     if '/' in ds_name and ds_name.startswith('lmms-lab'):
         # DocVQA has subtask when using load_dataset('lmms-lab/DocVQA', 'DocVQA')
@@ -406,8 +406,12 @@ def run_eval(ds_name, model_type, model_name, max_samples=200, out_file='eval_re
 
     # sample
     total = len(ds)
-    max_samples = min(max_samples, total)
-    ds = ds.shuffle(seed=seed).select(range(max_samples))
+    if sample_offset < 0:
+        raise ValueError("sample_offset must be non-negative")
+    if sample_offset >= total:
+        raise ValueError(f"sample_offset {sample_offset} is outside dataset of size {total}")
+    max_samples = min(max_samples, total - sample_offset)
+    ds = ds.shuffle(seed=seed).select(range(sample_offset, sample_offset + max_samples))
 
     # init model
     if model_type == 'hf':
@@ -581,6 +585,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_name', type=str, required=True)
     parser.add_argument('--input_type', type=str, choices=['text-only', 'text+image'], default='text+image', help='Input modality: text-only or text+image')
     parser.add_argument('--max_samples', type=int, default=200)
+    parser.add_argument('--sample_offset', type=int, default=0, help='Offset into the shuffled/filtered dataset before selecting max_samples')
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--out_file', type=str, default='eval_outputs.jsonl')
     parser.add_argument('--device', type=int, default=-1)
@@ -594,4 +599,4 @@ if __name__ == '__main__':
     model_kwargs = dict(device=args.device, max_new_tokens=args.max_new_tokens, temperature=args.temperature)
 
     # pass subset through to run_eval so we can select named splits (e.g. 'DocVQA')
-    run_eval(args.ds_name, args.model_type, args.model_name, max_samples=args.max_samples, out_file=args.out_file, model_kwargs=model_kwargs, seed=args.seed, subset=args.subset, input_type=args.input_type, text_type_filter=args.text_type, use_original_question=args.use_original_question)
+    run_eval(args.ds_name, args.model_type, args.model_name, max_samples=args.max_samples, sample_offset=args.sample_offset, out_file=args.out_file, model_kwargs=model_kwargs, seed=args.seed, subset=args.subset, input_type=args.input_type, text_type_filter=args.text_type, use_original_question=args.use_original_question)
