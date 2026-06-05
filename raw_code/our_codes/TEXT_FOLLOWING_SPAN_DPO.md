@@ -66,18 +66,39 @@ From the train-mining slice:
 - DPO train/test rows: 180 / 20
 - Same DPO hyperparameters as above
 
-Held-out corrupted 200:
+Held-out corrupted 200, seed 0:
 
 | Model | Accuracy | Incorrect aux-hit | Corrected / Regressed |
 |---|---:|---:|---:|
 | Base Qwen3-VL-8B | 0.715 | 89.5% | - |
 | Text-following span DPO | 0.900 | 55.0% | 37 / 0 |
 
+We repeated the same protocol with a different shuffle seed:
+
+- Train-mining slice: seed 1, offset 0, 800 examples
+- Held-out test slice: seed 1, offset 800, 200 examples
+- Extracted text-following rows: 251
+- DPO train/test rows: 225 / 26
+
+Held-out corrupted 200, seed 1:
+
+| Model | Accuracy | Incorrect aux-hit | Corrected / Regressed |
+|---|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.760 | 89.6% | - |
+| Text-following span DPO | 0.930 | 50.0% | 34 / 0 |
+
+Preservation on seed 1:
+
+| Eval | Accuracy |
+|---|---:|
+| match 100 | 0.99 |
+| irrelevant 100 | 0.97 |
+
 ## Interpretation
 
 The result suggests that a large fraction of corrupted-context failures are conflict-resolution failures: the model follows a plausible textual answer even when the image supports a different answer. Filtering training pairs to this high-precision failure type gives a cleaner preference signal than using all base errors.
 
-The most important next validation is to repeat the same split protocol across additional seeds and other subsets such as VQAv2.
+The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The most important next validation is to repeat the same split protocol on other subsets such as VQAv2, and to keep GRPO-only and DPO-to-GRPO experiments reported separately.
 
 ## Example Commands
 
