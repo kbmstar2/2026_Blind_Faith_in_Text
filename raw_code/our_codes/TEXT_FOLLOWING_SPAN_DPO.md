@@ -100,6 +100,21 @@ Preservation on seed 1:
 | match 100 | 0.99 |
 | irrelevant 100 | 0.97 |
 
+## DocVQA DPO Hyperparameter Grid
+
+We ran a small 2x2 ablation on the seed-0 disjoint DocVQA split, keeping the same train-mining slice, held-out test slice, learning rate (`1e-5`), 700 DPO steps, batch size, and Qwen3-VL-8B base model. Only DPO beta and LoRA rank changed.
+
+Held-out corrupted 200, seed 0:
+
+| Beta | LoRA rank | Accuracy | Incorrect aux-hit | Corrected / Regressed | match 100 | irrelevant 100 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0.1 | 8 | 0.900 | 55.0% | 37 / 0 | 1.00 | 0.96 |
+| 0.2 | 8 | 0.900 | 55.0% | 37 / 0 | 0.98 | 0.91 |
+| 0.1 | 16 | 0.915 | 47.1% | 40 / 0 | 0.98 | 0.91 |
+| 0.2 | 16 | 0.915 | 47.1% | 40 / 0 | 0.98 | 0.91 |
+
+The best setting in this grid is LoRA rank 16, with either beta. Increasing rank from 8 to 16 improved corrupted accuracy from 0.900 to 0.915, added three more corrected examples, kept regressions at zero, and reduced incorrect corrupted-text copying from 55.0% to 47.1%. Increasing beta from 0.1 to 0.2 did not change the corrupted metric in either rank setting. Because the r16 runs slightly reduce match/irrelevant preservation relative to the original r8 beta-0.1 run, the next useful check is whether r16 remains better under a larger held-out slice or another seed, rather than treating the 0.015 gain as fully settled.
+
 ## VQAv2 Transfer Check
 
 We also ran the same disjoint split protocol on VQAv2 to test whether the method is specific to document images.
@@ -142,7 +157,7 @@ We also tried explicit preservation regularization by mixing DPO with an auxilia
 
 The result suggests that a large fraction of corrupted-context failures are conflict-resolution failures: the model follows a plausible textual answer even when the image supports a different answer. Filtering training pairs to this high-precision failure type gives a cleaner preference signal than using all base errors.
 
-The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The VQAv2 transfer check shows the same direction but weaker preservation. The conservative ablation, hard-weighted ablation, and first DPO+SFT preservation run did not improve over pure DPO, so broad generalization should not be claimed yet. GRPO-only, DPO-only, and DPO-to-GRPO experiments should remain reported separately; SFT should be treated as a negative ablation rather than a main method.
+The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The DocVQA 2x2 hyperparameter grid suggests extra LoRA capacity is more useful than increasing beta: r16 improves corrupted accuracy and text-bias reduction, while beta 0.2 is effectively tied with beta 0.1. The VQAv2 transfer check shows the same direction but weaker preservation. The conservative ablation, hard-weighted ablation, and first DPO+SFT preservation run did not improve over pure DPO, so broad generalization should not be claimed yet. GRPO-only, DPO-only, and DPO-to-GRPO experiments should remain reported separately; SFT should be treated as a negative ablation rather than a main method.
 
 ## Example Commands
 
