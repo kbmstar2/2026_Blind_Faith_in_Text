@@ -55,6 +55,7 @@ Held-out corrupted 200:
 | Base Qwen3-VL-8B | - | - | - | 0.715 | 89.5% | - |
 | GRPO-only v1 | base | 100 | 2e-6 | 0.710 | 89.7% | 0 / 1 |
 | GRPO-only v2 | base | 300 | 1e-5 | 0.705 | 89.8% | 0 / 2 |
+| GRPO-only v3 dense reward | base | 300 | 8e-6 | 0.705 | 89.8% | 0 / 2 |
 | Text-following span DPO | base | 700 | 1e-5 | 0.900 | 55.0% | 37 / 0 |
 | Span DPO -> GRPO v2 | span DPO | 150 | 2e-6 | 0.900 | 60.0% | 37 / 0 |
 
@@ -64,15 +65,17 @@ Preservation:
 |---|---:|---:|
 | GRPO-only v1 | 1.00 | 0.96 |
 | GRPO-only v2 | 1.00 | 0.96 |
+| GRPO-only v3 dense reward | 1.00 | 0.96 |
 | Span DPO -> GRPO v2 | 1.00 | 0.96 |
 
 Training-signal observation:
 
 - GRPO-only v2 generated correct sampled answers only about 0-15% of the time during training.
 - Its predictions barely moved from base: 196/200 held-out predictions were unchanged, with 0 corrections and 2 regressions.
+- GRPO-only v3 used a denser reward (`num_generations=8`, `temperature=1.0`, stronger rejected/span/aux-copy penalties, lower KL) and did produce more diagnostic reward signal during training: `correct_gen` was often 1-12.5%, and rejected/aux-copy matches were frequently observed. However, held-out greedy behavior still barely moved: 196/200 predictions were unchanged, with 0 corrections and 2 regressions. Incorrect aux-hit stayed at 89.8%.
 - DPO -> GRPO v2 generated more correct samples during training, but it did not improve held-out accuracy over DPO. It changed only 3/200 held-out predictions relative to DPO, with 0 corrections and 0 regressions.
 
-Interpretation: under the current sampled-answer reward, pure GRPO is too sparse to overcome the base model's text-following behavior. DPO remains the effective intervention. GRPO may still be useful as a refinement stage, but only if the reward is made more discriminative than the current answer-match plus aux-copy penalty.
+Interpretation: making the sampled reward denser is not enough by itself. Pure GRPO still fails to overcome the base model's text-following behavior in greedy evaluation. DPO remains the effective intervention. For GRPO to become competitive, the next change should alter the optimization target more directly, for example by anchoring each prompt with explicit chosen/rejected candidate log-prob rewards or by using a verifier-style reward over constrained candidate answers rather than relying only on free-form sampled completions.
 
 ## Current Reward Sketch
 
@@ -92,12 +95,13 @@ The trainer now logs reward components (`correct_gen`, `rejected`, `span`, `aux`
 
    The seed 0 split is strong but still only one held-out partition. Repeat seed 1 and seed 2 before treating the DPO advantage as stable.
 
-2. Improve GRPO reward density.
+2. Move beyond free-form sampled-answer GRPO.
 
-   Pure GRPO needs more frequent useful reward than exact answer matching. Candidate directions:
+   The dense-reward v3 run showed that more sampled reward signal still did not change greedy held-out behavior. Candidate directions:
 
+   - use candidate-constrained GRPO: sample/rank among chosen, rejected, and mined misleading spans instead of only free-form completions;
+   - add a direct log-prob margin reward for chosen over rejected candidates inside the GRPO objective;
    - reward image-grounded answer equivalence using ANLS/token similarity, not only exact match;
-   - use a verifier or judge reward that compares image evidence against the generated answer;
    - add a curriculum: begin from easier/high-confidence rows where the base model samples the correct answer at least once.
 
 3. Span-focused penalty.
@@ -127,6 +131,36 @@ CUDA_VISIBLE_DEVICES=0 python our_codes/grpo/train_grpo_qwen3vl_lora.py \
   --lr 2e-6 \
   --beta_kl 0.02 \
   --num_generations 4 \
+  --lora_r 8 \
+  --lora_alpha 16 \
+  --max_pixels 401408
+```
+
+
+Dense GRPO-only v3 command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python our_codes/grpo/train_grpo_qwen3vl_lora.py \
+  --dataset_dir data/dpo_DocVQA_text_follow_span_seed0_train800 \
+  --model_name Qwen/Qwen3-VL-8B-Instruct \
+  --output_dir checkpoints/qwen3vl8b_grpo_only_v3_dense_docvqa_split_r8_lr8e6_300_ada \
+  --max_steps 300 \
+  --batch_size 1 \
+  --grad_accum 8 \
+  --lr 8e-6 \
+  --beta_kl 0.01 \
+  --num_generations 8 \
+  --temperature 1.0 \
+  --top_p 0.95 \
+  --correct_reward 3.0 \
+  --wrong_penalty 0.05 \
+  --rejected_penalty 2.0 \
+  --span_penalty 1.2 \
+  --aux_copy_penalty 1.2 \
+  --aux_free_reward 0.25 \
+  --empty_penalty 0.8 \
+  --format_reward 0.1 \
+  --long_penalty 0.2 \
   --lora_r 8 \
   --lora_alpha 16 \
   --max_pixels 401408
