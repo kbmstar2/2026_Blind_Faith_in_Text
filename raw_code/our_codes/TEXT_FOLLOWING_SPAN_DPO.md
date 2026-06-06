@@ -118,13 +118,21 @@ Preservation on VQAv2 seed 0:
 | match 100 | 0.90 |
 | irrelevant 100 | 0.75 |
 
-This is a positive transfer signal but weaker than DocVQA. The method reduces copying from corrupted auxiliary text and improves held-out corrupted accuracy, but the lower irrelevant score suggests that VQAv2 needs either a stronger preservation term, mixed clean/match data, or a less aggressive DPO recipe.
+We then tried a more conservative DPO recipe on the same mined data (`lr=5e-6`, 300 steps instead of `lr=1e-5`, 700 steps):
+
+| Model | Accuracy | Incorrect aux-hit | Corrected / Regressed | match 100 | irrelevant 100 |
+|---|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.545 | 65.9% | - | - | - |
+| Span DPO, 700 steps | 0.645 | 40.8% | 22 / 2 | 0.90 | 0.75 |
+| Span DPO, 300 steps, lr 5e-6 | 0.555 | 65.2% | 2 / 0 | 0.92 | 0.77 |
+
+This is a positive transfer signal but weaker than DocVQA. The conservative recipe is more stable but barely changes the corrupted behavior, so simple step/lr reduction is not enough. VQAv2 likely needs an explicit preservation mechanism, such as mixing match/irrelevant preference pairs or adding a KL/preservation regularizer, rather than only weakening the text-following DPO signal.
 
 ## Interpretation
 
 The result suggests that a large fraction of corrupted-context failures are conflict-resolution failures: the model follows a plausible textual answer even when the image supports a different answer. Filtering training pairs to this high-precision failure type gives a cleaner preference signal than using all base errors.
 
-The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The VQAv2 transfer check shows the same direction but weaker preservation, so the next method step should add explicit preservation or mixed-task regularization before claiming broad generalization. GRPO-only and DPO-to-GRPO experiments should remain reported separately.
+The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The VQAv2 transfer check shows the same direction but weaker preservation, and the conservative ablation shows that merely weakening DPO does not retain enough debiasing effect. The next method step should add explicit preservation or mixed-task regularization before claiming broad generalization. GRPO-only and DPO-to-GRPO experiments should remain reported separately.
 
 ## Example Commands
 
