@@ -115,6 +115,50 @@ Held-out corrupted 200, seed 0:
 
 The best setting in this grid is LoRA rank 16, with either beta. Increasing rank from 8 to 16 improved corrupted accuracy from 0.900 to 0.915, added three more corrected examples, kept regressions at zero, and reduced incorrect corrupted-text copying from 55.0% to 47.1%. Increasing beta from 0.1 to 0.2 did not change the corrupted metric in either rank setting. Because the r16 runs slightly reduce match/irrelevant preservation relative to the original r8 beta-0.1 run, the next useful check is whether r16 remains better under a larger held-out slice or another seed, rather than treating the 0.015 gain as fully settled.
 
+## Counterfactual and Multi-Condition DPO Checks
+
+We then tested whether adding non-corrupted prompt conditions can further reduce text bias without moving away from DPO. These are DPO-only experiments; they should not be mixed with the GRPO-only results.
+
+### Prompt-augmented counterfactual DPO
+
+The first variant expanded each mined corrupted failure into four prompt conditions: corrupted, no auxiliary text, matching auxiliary text, and irrelevant auxiliary text. However, all rows still used the same preference pair:
+
+- `chosen`: ground-truth answer
+- `rejected`: original corrupted-text-following answer
+
+This produced 800 DPO rows from the 200 seed-0 corrupted failures and trained a rank-16, beta-0.1 adapter for 1400 steps.
+
+Held-out corrupted 200, seed 0:
+
+| Model | Accuracy | Incorrect aux-hit | Corrected / Regressed vs base | match 100 | irrelevant 100 |
+|---|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.715 | 89.5% | - | 0.99 | 0.91 |
+| Plain span DPO, r16 beta 0.1 | 0.915 | 47.1% | 40 / 0 | 0.98 | 0.91 |
+| Prompt-augmented counterfactual DPO | 0.915 | 47.1% | 40 / 0 | 0.98 | 0.91 |
+
+This tied the plain r16 result. The likely reason is that the augmented prompts did not introduce condition-specific negative behavior; they mostly repeated the same `GT > corrupted-answer` preference under different prompt wrappers.
+
+### Multi-condition error-mined DPO
+
+The second variant mines base-model failures separately under each condition and uses the actual failed prediction as the rejected answer for that condition. This makes the non-corrupted rows condition-specific instead of prompt duplicates.
+
+Dataset: `data/dpo_DocVQA_multicond_error_seed0_train800`
+
+- Total examples: 273
+- Train/test split: 245 / 28
+- Source counts: corrupted 200, match 7, irrelevant 33, no-text 33
+- Training: Qwen3-VL-8B, LoRA rank 16, alpha 32, lr `1e-5`, beta `0.1`, 900 DPO steps
+
+Held-out corrupted 200, seed 0:
+
+| Model | Accuracy | Incorrect aux-hit | Corrected / Regressed vs base | Changed vs plain r16 | match 100 | irrelevant 100 |
+|---|---:|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.715 | 89.5% | - | - | 0.99 | 0.91 |
+| Plain span DPO, r16 beta 0.1 | 0.915 | 47.1% | 40 / 0 | - | 0.98 | 0.91 |
+| Multi-condition error-mined DPO | 0.920 | 43.8% | 41 / 0 | +1 corrected / 0 regressed | 0.98 | 0.91 |
+
+The gain is small but directionally useful: it fixes one additional held-out corrupted example relative to plain r16 DPO and further lowers the rate at which remaining wrong answers appear in the corrupted auxiliary text. Because match/no-text failures are sparse on DocVQA, the added signal is limited. The result supports the design principle that counterfactual DPO rows need condition-specific rejected answers, not just condition-specific prompt wrappers.
+
 ## VQAv2 Transfer Check
 
 We also ran the same disjoint split protocol on VQAv2 to test whether the method is specific to document images.
@@ -157,7 +201,7 @@ We also tried explicit preservation regularization by mixing DPO with an auxilia
 
 The result suggests that a large fraction of corrupted-context failures are conflict-resolution failures: the model follows a plausible textual answer even when the image supports a different answer. Filtering training pairs to this high-precision failure type gives a cleaner preference signal than using all base errors.
 
-The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The DocVQA 2x2 hyperparameter grid suggests extra LoRA capacity is more useful than increasing beta: r16 improves corrupted accuracy and text-bias reduction, while beta 0.2 is effectively tied with beta 0.1. The VQAv2 transfer check shows the same direction but weaker preservation. The conservative ablation, hard-weighted ablation, and first DPO+SFT preservation run did not improve over pure DPO, so broad generalization should not be claimed yet. GRPO-only, DPO-only, and DPO-to-GRPO experiments should remain reported separately; SFT should be treated as a negative ablation rather than a main method.
+The seed-1 repeat strengthens the DPO-only evidence: accuracy improved on a disjoint held-out slice while the rate of incorrect predictions copied from corrupted text dropped sharply. The DocVQA 2x2 hyperparameter grid suggests extra LoRA capacity is more useful than increasing beta: r16 improves corrupted accuracy and text-bias reduction, while beta 0.2 is effectively tied with beta 0.1. The prompt-augmented counterfactual check was a negative result because it duplicated the same rejected answer across conditions. The multi-condition error-mined variant gives a small additional gain, suggesting that condition-specific rejected answers are more useful than prompt augmentation alone, but the effect is currently modest because non-corrupted failures are rare. The VQAv2 transfer check shows the same direction but weaker preservation. The conservative ablation, hard-weighted ablation, and first DPO+SFT preservation run did not improve over pure DPO, so broad generalization should not be claimed yet. GRPO-only, DPO-only, and DPO-to-GRPO experiments should remain reported separately; SFT should be treated as a negative ablation rather than a main method.
 
 ## Example Commands
 
