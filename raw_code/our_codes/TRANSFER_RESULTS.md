@@ -59,22 +59,25 @@ Interpretation:
 
 ## LLaVA-Next-13B
 
-LLaVA-Next-13B base/mining completed successfully.
+LLaVA-Next-13B base/mining completed successfully. We then ran the same conservative DPO pilot used for LLaVA-Next-7B, because this comparison is useful for separating "DPO does not transfer to LLaVA under the current setup" from "7B was simply too small."
 
 Mined data:
 
 - Train rows: 585
 - Test rows: 66
 
-| Model | Corrupted Acc | Incorrect aux-hit |
-|---|---:|---:|
-| LLaVA-Next-13B base | 0.115 | 92.7% |
+| Model | Corrupted Acc | Incorrect aux-hit | Corrected / Regressed | Match 100 | Irrelevant 100 |
+|---|---:|---:|---:|---:|---:|
+| LLaVA-Next-13B base | 0.115 | 92.7% | - | - | - |
+| LLaVA-Next-13B span DPO r16 beta 0.1, 300 steps | 0.130 | 95.4% | 3 / 0 | 0.97 | 0.62 |
 
 Interpretation:
 
 - The 13B base performance is only slightly above LLaVA-Next-7B and still far below Qwen2/Qwen3.
-- Because LLaVA-Next-7B DPO was negative under the same setup, running LLaVA-Next-13B DPO immediately is unlikely to be a good use of GPU time.
-- The better next step for LLaVA is not larger DPO, but prompt/template diagnosis or a short supervised/task-adaptation check to make sure the model can follow the DocVQA answer format.
+- DPO gives a tiny absolute accuracy gain (+0.015) and no regressions against the base predictions, but this is not a convincing text-bias reduction result.
+- The incorrect aux-hit rate increases from 92.7% to 95.4%, meaning the remaining wrong answers are even more likely to appear in corrupted auxiliary text.
+- This supports the boundary-condition interpretation: LLaVA-Next is poorly aligned with DocVQA under the current prompt/template, so DPO on mined text-copy failures is not enough by itself.
+- The better next step for LLaVA would be prompt/template diagnosis or a short supervised/task-adaptation check before applying this DPO recipe.
 
 ## Overall Takeaway
 
@@ -82,7 +85,7 @@ The transfer check strengthens the Qwen-family result but weakens the case for c
 
 - Qwen2-VL-7B: strong positive transfer.
 - LLaVA-Next-7B: negative under the current prompt/template.
-- LLaVA-Next-13B: base/mining completed, but DPO is not recommended until the LLaVA prompt/task mismatch is addressed.
+- LLaVA-Next-13B: tiny accuracy gain from DPO, but no evidence of text-bias reduction.
 
 The clean story is:
 

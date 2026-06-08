@@ -1,61 +1,80 @@
-# Overall Result: Text Bias를 줄이기 위한 Preference Learning 정리
+# Overall Result: VLM의 Text Bias 문제와 DPO 기반 완화 실험 정리
 
-## 1. 문제를 어떻게 보았는가
+## 1. 왜 이 문제가 중요한가
 
-이번 실험의 출발점은 단순합니다. Vision-Language Model이 이미지와 텍스트를 함께 볼 때, 텍스트가 틀렸더라도 그럴듯해 보이면 텍스트를 너무 쉽게 믿는다는 것입니다.
+Vision-Language Model(VLM)은 이미지와 텍스트를 함께 입력으로 받습니다. 문서 이해, OCR 기반 질의응답, 차트/영수증/서류 분석처럼 실제 응용에서는 이미지 안의 시각 정보와 함께 OCR text, caption, retrieved text 같은 보조 텍스트가 자주 들어갑니다.
 
-예를 들어 문서 이미지 안에는 실제 정답이 `DWRITE 077665`로 적혀 있는데, 함께 제공된 corrupted text에는 `DOCNUM 123456` 같은 잘못된 답이 들어있을 수 있습니다. 이때 모델이 이미지를 보고 정답을 읽는 대신, corrupted text에 있는 그럴듯한 답을 그대로 따라가면 이것을 text bias라고 볼 수 있습니다.
+문제는 이 보조 텍스트가 항상 맞지 않다는 점입니다. OCR이 틀릴 수도 있고, retrieval 결과가 섞일 수도 있고, 공격자가 의도적으로 그럴듯한 잘못된 텍스트를 넣을 수도 있습니다. 이때 VLM이 이미지를 직접 확인하지 않고 보조 텍스트에 있는 답을 그대로 믿으면, 모델은 겉으로는 멀티모달 모델처럼 보이지만 실제로는 텍스트 shortcut에 의존하게 됩니다.
 
-따라서 우리는 text bias를 막연하게 "텍스트 때문에 성능이 떨어졌다"라고 보지 않았습니다. 더 구체적으로는 다음과 같이 정의했습니다.
+따라서 text bias는 단순히 "텍스트가 있으면 성능이 조금 흔들린다"는 문제가 아닙니다. 더 정확히는 다음 문제입니다.
 
-> 모델이 틀린 답을 냈고, 그 틀린 답이 corrupted auxiliary text 안에 실제로 등장한다면, 이것은 텍스트를 과신해서 생긴 오류일 가능성이 높다.
+> 이미지와 텍스트가 서로 충돌할 때, VLM이 무엇을 근거로 답을 선택하는가?
 
-이 정의가 중요한 이유는 사람이 직접 "이 샘플은 text bias다"라고 라벨링하지 않아도 된다는 점입니다. 모델의 예측값과 corrupted text를 비교하면, text-following error를 자동으로 골라낼 수 있습니다.
+우리가 다루는 문제는 바로 이 충돌 상황입니다. 이미지에는 정답이 있고, corrupted auxiliary text에는 그럴듯하지만 틀린 답이 들어 있습니다. 이때 모델이 corrupted text를 따라가면, 모델은 이미지를 못 본 것이 아니라 이미지보다 텍스트를 더 믿은 것입니다.
 
-## 2. 우리가 채택한 방법
+## 2. 이 연구의 출발점
 
-우리가 메인으로 채택한 방법은 text-following span DPO입니다. 이름은 조금 길지만 아이디어는 어렵지 않습니다.
+기존 `Words or Vision: Do Vision-Language Models Have Blind Faith in Text?` 논문은 VLM이 visual evidence보다 text evidence를 과하게 신뢰할 수 있다는 문제를 제기합니다. 우리는 여기서 한 단계 더 나아가고자 했습니다.
 
-1. 먼저 기본 VLM을 corrupted text가 포함된 조건에서 평가합니다.
-2. 모델이 틀린 경우만 모읍니다.
-3. 그중에서도 모델의 오답이 corrupted text 안에 실제로 등장하는 경우만 고릅니다.
-4. 이 샘플을 preference pair로 바꿉니다.
+단순히 "text bias가 있다"를 다시 확인하는 것이 아니라, 다음 두 질문에 답하고자 했습니다.
 
-여기서 preference pair는 "둘 중 무엇을 더 선호해야 하는가"를 알려주는 학습 데이터입니다.
+1. Text bias가 실제 예측에서 어떤 형태로 나타나는가?
+2. 이 오류를 사람이 직접 라벨링하지 않고 학습 신호로 바꿀 수 있는가?
+
+이를 위해 우리는 text bias를 다음처럼 더 구체적인 오류로 보았습니다.
+
+> 모델이 틀린 답을 냈고, 그 틀린 답이 corrupted auxiliary text 안에 실제로 등장한다면, 이것은 text-following error일 가능성이 높다.
+
+이 정의의 장점은 명확합니다. 사람이 직접 "이 샘플은 text bias다"라고 나누지 않아도 됩니다. 모델의 오답과 corrupted text를 비교하면, corrupted text를 따라간 실패 사례를 자동으로 골라낼 수 있습니다.
+
+## 3. 우리가 제안한 핵심 아이디어
+
+우리가 채택한 핵심 방법은 `text-following span DPO`입니다.
+
+절차는 간단합니다.
+
+1. Base VLM을 corrupted text 조건에서 평가합니다.
+2. 모델이 틀린 샘플만 모읍니다.
+3. 그중 오답이 corrupted text 안에 실제로 등장하는 경우를 text-following error로 잡습니다.
+4. 이 샘플을 DPO preference pair로 바꿉니다.
+
+Preference pair는 다음 구조입니다.
 
 | 항목 | 의미 |
 |---|---|
 | chosen | 이미지에 근거한 정답 |
 | rejected | corrupted text를 따라간 오답 |
 
-즉 모델에게 이런 메시지를 주는 것입니다.
+즉 모델에게 다음 선호를 학습시킵니다.
 
-> 이 상황에서는 corrupted text에 있는 그럴듯한 답보다, 이미지에서 읽을 수 있는 정답을 더 믿어야 한다.
+> corrupted text에 있는 그럴듯한 오답보다, 이미지에 근거한 정답을 더 선호해야 한다.
 
-이 방식은 정답만 알려주는 것이 아니라, "어떤 답을 선택하면 안 되는지"까지 같이 알려줍니다. 이 점이 핵심입니다.
+이 점이 중요합니다. 우리는 VLM에게 단순히 정답을 외우게 한 것이 아닙니다. 모델이 실제로 유혹당했던 corrupted-text answer를 rejected로 넣어서, "무엇을 믿지 말아야 하는지"까지 알려준 것입니다.
 
-## 3. 왜 이 방식이 통하는가
+## 4. 왜 DPO인가
 
-VLM이 text bias를 보이는 경우를 보면, 모델이 아무것도 몰라서 틀리는 것이 아닙니다. 오히려 이미지와 텍스트 사이에 충돌이 있을 때, 어느 쪽을 더 믿어야 할지 잘못 판단하는 경우가 많습니다.
+이 연구에서 DPO를 쓴 이유는 "RL이 좋아 보여서"가 아닙니다. 문제 구조가 DPO와 잘 맞기 때문입니다.
 
-일반적인 지도학습은 보통 "이 질문의 정답은 이것이다"라고 알려줍니다. 하지만 우리의 문제는 조금 다릅니다.
+Text bias는 단순한 지식 부족 문제가 아닙니다. 이미지와 텍스트가 충돌할 때, 모델이 둘 중 어느 쪽을 더 믿을지 잘못 고르는 문제입니다. 다시 말해 이것은 정답 생성 문제이면서 동시에 선호 선택 문제입니다.
 
-우리가 해결하고 싶은 것은 다음 질문입니다.
+SFT는 보통 다음을 가르칩니다.
 
-> 이미지에는 A가 있고, 텍스트에는 B가 있을 때, 모델은 왜 B를 따라가는가? 그리고 어떻게 A를 선택하도록 만들 수 있는가?
+> 이 입력에서는 이 정답을 출력하라.
 
-DPO는 이 문제와 잘 맞습니다. 왜냐하면 DPO는 단순히 정답을 외우게 하는 것이 아니라, 두 답 중 어느 쪽이 더 나은지 비교하게 만들기 때문입니다.
+DPO는 다음을 가르칩니다.
 
-우리 데이터에서는 비교 대상이 매우 분명합니다.
+> 이 답이 저 답보다 낫다. 특히 저 답은 그럴듯해 보여도 선택하면 안 된다.
 
-- 더 좋은 답: 이미지에 근거한 GT answer
-- 피해야 할 답: corrupted text에서 따라온 wrong answer
+우리 setting에서는 이 비교 관계가 매우 깨끗하게 만들어집니다.
 
-그래서 DPO가 효과적이었습니다. 모델은 "정답을 출력하라"만 배우는 것이 아니라, "corrupted text 안에 있는 그럴듯한 오답을 따라가지 말라"는 방향까지 같이 배우게 됩니다.
+- 좋은 답: 이미지 기반 GT answer
+- 피해야 할 답: corrupted text를 따라간 wrong answer
 
-## 4. 주요 결과
+그래서 DPO는 이 문제에 대해 직접적인 학습 신호를 제공합니다. 정답만 알려주는 것이 아니라, 모델이 실제로 따라간 text shortcut을 명시적으로 밀어내기 때문입니다.
 
-메인 실험은 Qwen3-VL-8B-Instruct를 사용했고, DocVQA corrupted held-out split에서 평가했습니다.
+## 5. 메인 결과: Qwen3-VL-8B
+
+메인 실험은 Qwen3-VL-8B-Instruct, DocVQA corrupted held-out split에서 수행했습니다.
 
 | Model | Corrupted Acc | Incorrect aux-hit | Corrected / Regressed |
 |---|---:|---:|---:|
@@ -64,96 +83,19 @@ DPO는 이 문제와 잘 맞습니다. 왜냐하면 DPO는 단순히 정답을 �
 | Text-following span DPO, r16 beta 0.1 | 0.915 | 47.1% | 40 / 0 |
 | Multi-condition error-mined DPO | 0.920 | 43.8% | 41 / 0 |
 
-여기서 accuracy도 중요하지만, 더 중요한 지표는 incorrect aux-hit입니다.
+여기서 accuracy도 중요하지만, 더 중요한 지표는 `incorrect aux-hit`입니다.
 
-Incorrect aux-hit는 모델이 틀렸을 때, 그 틀린 답이 corrupted text 안에 있었는지를 보는 값입니다. 이 값이 높으면, 모델이 틀릴 때 corrupted text를 그대로 따라가는 경우가 많다는 뜻입니다.
+`Incorrect aux-hit`는 모델이 틀렸을 때, 그 틀린 답이 corrupted auxiliary text 안에 있었는지를 보는 값입니다. 이 값이 높으면 모델이 틀릴 때 corrupted text를 따라가는 경우가 많다는 뜻입니다.
 
-Base model은 틀린 답의 89.5%가 corrupted text 안에 있었습니다. 즉 틀릴 때 대부분 텍스트를 따라간 것입니다. DPO 이후에는 이 값이 47.1%, multi-condition DPO에서는 43.8%까지 내려갔습니다.
+Base Qwen3는 틀린 답의 89.5%가 corrupted text 안에 있었습니다. DPO 이후에는 이 값이 47.1%까지 내려갔고, multi-condition error-mined DPO에서는 43.8%까지 내려갔습니다.
 
-따라서 결과를 이렇게 해석할 수 있습니다.
+따라서 핵심 해석은 다음입니다.
 
 > DPO는 단순히 정답률을 올린 것이 아니라, 모델이 틀리는 방식을 바꾸었다. 특히 corrupted text를 그대로 따라가는 오류가 크게 줄었다.
 
-## 5. SFT보다 RL 계열 방법이 더 적합한 이유
+## 6. Hyperparameter와 추가 DPO 실험
 
-여기서 말하는 RL은 복잡한 강화학습 전체라기보다, "어떤 답을 더 선호해야 하는지"를 학습시키는 preference learning에 가깝습니다.
-
-SFT는 보통 다음과 같은 방식입니다.
-
-> 이 입력이 들어오면 이 정답을 출력하라.
-
-반면 DPO는 다음에 가깝습니다.
-
-> 이 답은 더 좋고, 저 답은 그럴듯해 보여도 선택하면 안 된다.
-
-우리 문제에서는 이 차이가 중요합니다. Text bias는 모델이 답을 아예 몰라서 생기는 문제라기보다, 이미지와 텍스트가 충돌할 때 잘못된 쪽을 선택해서 생기는 문제입니다.
-
-따라서 정답만 알려주는 SFT보다, 정답과 피해야 할 오답을 함께 비교시키는 DPO가 더 자연스럽습니다.
-
-실험적으로도 SFT를 preservation anchor로 섞은 방식은 큰 이득을 주지 못했습니다. VQAv2에서 DPO+SFT는 pure DPO보다 오히려 약간 낮은 결과를 보였습니다.
-
-| VQAv2 Variant | Corrupted Acc | Incorrect aux-hit | Match | Irrelevant |
-|---|---:|---:|---:|---:|
-| Base Qwen3-VL-8B | 0.545 | 65.9% | 0.92 | 0.77 |
-| Span DPO | 0.645 | 40.8% | 0.90 | 0.75 |
-| Span DPO + preservation SFT | 0.635 | 42.5% | 0.90 | 0.75 |
-
-이 결과는 SFT가 항상 나쁘다는 뜻은 아닙니다. 다만 우리가 다루는 text bias 문제에서는, 단순히 정답 생성을 더 학습시키는 것보다 "정답과 text-following 오답을 비교시키는 것"이 더 직접적인 신호였다고 볼 수 있습니다.
-
-## 6. DPO가 GRPO보다 잘 맞았던 이유
-
-GRPO도 RL 계열 방법이지만, 이번 문제에서는 DPO보다 잘 맞지 않았습니다.
-
-쉽게 말하면 DPO는 이미 준비된 두 답을 비교합니다.
-
-> 정답이 이 오답보다 낫다.
-
-반면 GRPO는 모델이 여러 답을 직접 생성하게 한 뒤, reward를 계산해서 어느 답이 나은지 알려주는 방식입니다. 이 방식은 reward 설계가 매우 중요합니다.
-
-이번 문제에서는 이미 좋은 비교쌍이 있었습니다.
-
-- chosen: 이미지 기반 정답
-- rejected: corrupted text를 따라간 오답
-
-즉 굳이 여러 답을 새로 생성하고 reward로 점수를 매기지 않아도, 학습해야 할 비교 관계가 아주 명확했습니다. 이런 상황에서는 DPO가 더 직접적이고 노이즈가 적습니다.
-
-GRPO에서는 모델이 생성한 답들이 충분히 다양하거나 좋은 후보를 포함해야 합니다. 그런데 실제 학습 중에는 correct sampled answer가 자주 나오지 않았고, reward를 더 촘촘하게 만들어도 held-out greedy prediction은 거의 움직이지 않았습니다.
-
-## 7. GRPO 실험 결과
-
-DocVQA seed 0 disjoint split 기준 결과는 다음과 같습니다.
-
-| Variant | Init | Steps | Accuracy | Incorrect aux-hit | Corrected / Regressed |
-|---|---|---:|---:|---:|---:|
-| Base Qwen3-VL-8B | - | - | 0.715 | 89.5% | - |
-| GRPO-only, short pilot | base | 100 | 0.710 | 89.7% | 0 / 1 |
-| GRPO-only, longer training | base | 300 | 0.705 | 89.8% | 0 / 2 |
-| GRPO-only, dense reward | base | 300 | 0.705 | 89.8% | 0 / 2 |
-| Text-following span DPO | base | 700 | 0.900 | 55.0% | 37 / 0 |
-| Span DPO -> GRPO, longer-training reward | DPO | 150 | 0.900 | 60.0% | 37 / 0 |
-
-각 GRPO 설정의 차이는 다음과 같습니다.
-
-| 이름 | 무엇을 바꿨는가 | 의도 |
-|---|---|---|
-| GRPO-only, short pilot | base model에서 100 step만 짧게 학습 | GRPO가 기본적으로 text-following behavior를 움직일 수 있는지 빠르게 확인 |
-| GRPO-only, longer training | base model에서 300 step으로 학습 길이와 learning rate를 늘림 | 짧아서 효과가 없었던 것인지 확인 |
-| GRPO-only, dense reward | 300 step은 유지하되, 정답 보상과 corrupted text copy penalty를 더 촘촘하게 설계 | reward가 너무 sparse해서 학습이 안 된 것인지 확인 |
-| Span DPO -> GRPO | 먼저 DPO로 좋아진 모델에서 GRPO를 추가 학습 | DPO가 만든 좋은 출발점 위에서 GRPO가 추가 개선을 줄 수 있는지 확인 |
-
-이 결과를 보면 GRPO-only는 base model의 text-following behavior를 거의 바꾸지 못했습니다. Dense reward를 사용해도 결과가 크게 달라지지 않았습니다.
-
-DPO 이후에 GRPO를 추가한 경우도 accuracy를 더 올리지 못했습니다. 오히려 incorrect aux-hit는 DPO-only보다 나빠졌습니다.
-
-따라서 현재 실험에서는 다음과 같이 정리하는 것이 가장 적절합니다.
-
-> GRPO가 원리적으로 불가능한 방법이라는 뜻은 아니다. 다만 이 문제에서는 이미 깨끗한 chosen/rejected pair를 만들 수 있었기 때문에, reward를 설계해서 여러 generated answer를 비교하는 GRPO보다 DPO가 훨씬 직접적이었다.
-
-## 8. 추가 ablation에서 얻은 교훈
-
-### LoRA rank와 beta
-
-LoRA rank를 8에서 16으로 늘리면 성능이 조금 더 좋아졌습니다.
+LoRA rank와 beta를 바꾼 결과, beta보다 LoRA capacity가 더 중요했습니다.
 
 | Beta | LoRA rank | Accuracy | Incorrect aux-hit |
 |---:|---:|---:|---:|
@@ -162,74 +104,108 @@ LoRA rank를 8에서 16으로 늘리면 성능이 조금 더 좋아졌습니다.
 | 0.1 | 16 | 0.915 | 47.1% |
 | 0.2 | 16 | 0.915 | 47.1% |
 
-반면 beta를 0.1에서 0.2로 늘리는 것은 큰 차이를 만들지 않았습니다. 현재까지는 beta 조정보다 LoRA capacity를 조금 늘리는 쪽이 더 효과적이었습니다.
+Prompt-augmented counterfactual DPO는 plain r16 DPO와 같은 0.915를 보였습니다. 반면 각 조건에서 실제로 발생한 base model의 오류를 rejected로 쓰는 multi-condition error-mined DPO는 0.920까지 소폭 개선되었습니다.
 
-### Counterfactual prompt augmentation
+이 결과는 중요한 교훈을 줍니다.
 
-처음에는 corrupted, no-text, match, irrelevant 조건으로 prompt를 늘려보았습니다. 하지만 rejected answer는 여전히 corrupted text에서 나온 같은 오답을 사용했습니다.
+> 단순히 학습 데이터를 많이 늘리는 것보다, 모델이 실제로 저지른 오류를 rejected answer로 잡는 것이 더 중요하다.
 
-결과는 plain r16 DPO와 같았습니다.
+## 7. SFT와 비교해서 어떻게 이해할 수 있는가
 
-| Variant | Accuracy | Incorrect aux-hit |
-|---|---:|---:|
-| Plain span DPO r16 | 0.915 | 47.1% |
-| Prompt-augmented counterfactual DPO | 0.915 | 47.1% |
+SFT가 나쁘다는 뜻은 아닙니다. SFT는 정답 형식과 task behavior를 맞추는 데 유용할 수 있습니다. 다만 우리가 다루는 핵심 오류는 "정답을 모른다"보다 "충돌 상황에서 잘못된 근거를 믿는다"에 가깝습니다.
 
-이 결과는 단순히 prompt 조건만 늘리는 것은 충분하지 않다는 것을 보여줍니다. 중요한 것은 각 조건에서 실제로 모델이 어떤 잘못을 했는지에 맞는 rejected answer를 구성하는 것입니다.
+그래서 text bias 완화만 놓고 보면 DPO가 더 직접적입니다.
 
-### Multi-condition error-mined DPO
+| 방법 | 모델에게 주는 신호 | 이 문제와의 관계 |
+|---|---|---|
+| SFT | 정답을 출력하라 | 정답 생성은 가르치지만, 어떤 오답을 피해야 하는지는 약함 |
+| DPO | 정답이 text-following 오답보다 낫다 | corrupted text shortcut을 직접 밀어냄 |
 
-그래서 다음으로는 각 조건에서 base model이 실제로 틀린 답을 rejected로 사용했습니다.
+VQAv2 transfer에서도 pure DPO가 DPO+SFT보다 약간 나았습니다.
 
-이 방식은 plain r16 DPO보다 아주 작게 좋아졌습니다.
+| VQAv2 Variant | Corrupted Acc | Incorrect aux-hit | Match | Irrelevant |
+|---|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.545 | 65.9% | 0.92 | 0.77 |
+| Span DPO | 0.645 | 40.8% | 0.90 | 0.75 |
+| Span DPO + preservation SFT | 0.635 | 42.5% | 0.90 | 0.75 |
 
-| Variant | Accuracy | Incorrect aux-hit |
-|---|---:|---:|
-| Plain span DPO r16 | 0.915 | 47.1% |
-| Multi-condition error-mined DPO | 0.920 | 43.8% |
+해석은 조심해야 합니다. 이것은 SFT가 항상 불리하다는 뜻이 아닙니다. 다만 이번 문제에서는 이미 명확한 rejected answer가 존재했기 때문에, 정답만 가르치는 SFT보다 정답과 오답을 직접 비교하는 DPO가 더 잘 맞았습니다.
 
-개선폭은 작지만 방향은 좋았습니다. 다만 DocVQA에서는 match/no-text 조건의 실패 수가 적어서 추가 신호가 제한적이었습니다. 따라서 이 결과는 main method라기보다 "DPO pair의 질이 중요하다"는 것을 보여주는 보조 실험으로 보는 것이 적절합니다.
+## 8. GRPO가 DPO보다 약했던 이유
+
+GRPO도 RL 계열 방법이지만, 이번 setting에서는 DPO보다 잘 맞지 않았습니다.
+
+DPO는 이미 준비된 두 답을 비교합니다.
+
+> 이미지 기반 정답이 corrupted text를 따라간 오답보다 낫다.
+
+반면 GRPO는 모델이 여러 답을 생성하고, reward로 답들을 평가해야 합니다. 이 방식은 reward 설계와 sampling 품질에 크게 의존합니다.
+
+이번 문제에서는 이미 깨끗한 비교쌍이 있었습니다. 모델이 실제로 낸 text-following wrong answer와 GT answer가 바로 chosen/rejected pair가 됩니다. 이런 경우에는 여러 답을 새로 생성하고 reward를 설계하는 GRPO보다 DPO가 더 직접적이고 노이즈가 적습니다.
+
+DocVQA seed 0 결과도 이 해석과 맞았습니다.
+
+| Variant | Init | Steps | Accuracy | Incorrect aux-hit | Corrected / Regressed |
+|---|---|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | - | - | 0.715 | 89.5% | - |
+| GRPO-only, short pilot | base | 100 | 0.710 | 89.7% | 0 / 1 |
+| GRPO-only, longer training | base | 300 | 0.705 | 89.8% | 0 / 2 |
+| GRPO-only, dense reward | base | 300 | 0.705 | 89.8% | 0 / 2 |
+| Text-following span DPO | base | 700 | 0.900 | 55.0% | 37 / 0 |
+| Span DPO -> GRPO | DPO | 150 | 0.900 | 60.0% | 37 / 0 |
+
+GRPO가 원리적으로 불가능하다는 뜻은 아닙니다. 다만 이 문제에서는 high-precision pair를 자동으로 만들 수 있었고, 그 결과 DPO가 더 안정적인 선택이었습니다.
 
 ## 9. 다른 모델에서도 통하는가
 
-추가로 Qwen3-VL-8B에서 얻은 결과가 다른 VLM에도 이어지는지 확인했습니다. 비교한 모델은 Qwen2-VL-7B, LLaVA-Next-7B, LLaVA-Next-13B입니다.
+Qwen3에서 얻은 결과가 다른 VLM에도 이어지는지 확인하기 위해 Qwen2-VL-7B, LLaVA-Next-7B, LLaVA-Next-13B를 추가로 평가했습니다. 모두 RTX 6000 Ada에서 실행했고 H100은 사용하지 않았습니다.
 
-| Model | Setting | Corrupted Acc | Incorrect aux-hit | Corrected / Regressed |
-|---|---|---:|---:|---:|
-| Qwen2-VL-7B | base | 0.570 | 93.0% | - |
-| Qwen2-VL-7B | span DPO | 0.775 | 86.7% | 41 / 0 |
-| LLaVA-Next-7B | base | 0.105 | 90.5% | - |
-| LLaVA-Next-7B | span DPO, 300 steps | 0.100 | 91.7% | 1 / 2 |
-| LLaVA-Next-13B | base only | 0.115 | 92.7% | - |
+| Model | Setting | Corrupted Acc | Incorrect aux-hit | Corrected / Regressed | Match | Irrelevant |
+|---|---|---:|---:|---:|---:|---:|
+| Qwen2-VL-7B | base | 0.570 | 93.0% | - | - | - |
+| Qwen2-VL-7B | span DPO | 0.775 | 86.7% | 41 / 0 | 0.98 | 0.94 |
+| LLaVA-Next-7B | base | 0.105 | 90.5% | - | - | - |
+| LLaVA-Next-7B | span DPO | 0.100 | 91.7% | 1 / 2 | 0.95 | 0.59 |
+| LLaVA-Next-13B | base | 0.115 | 92.7% | - | - | - |
+| LLaVA-Next-13B | span DPO | 0.130 | 95.4% | 3 / 0 | 0.97 | 0.62 |
 
-Qwen2-VL-7B에서는 결과가 꽤 좋았습니다. Base model은 held-out corrupted split에서 0.570이었고, 같은 text-following span DPO를 적용하면 0.775까지 올랐습니다. 특히 corrected/regressed가 41/0이었기 때문에, Qwen3에서 보았던 "corrupted text를 따라간 오답을 image-grounded answer로 교정하는 효과"가 Qwen2에서도 반복되었다고 볼 수 있습니다.
+Qwen2-VL-7B에서는 강한 positive transfer가 나타났습니다. Accuracy가 0.570에서 0.775로 올랐고, 41개를 교정하는 동안 regression은 없었습니다. 이는 Qwen3에서 본 효과가 Qwen3에만 특화된 현상은 아니라는 점을 보여줍니다.
 
-반면 LLaVA-Next 계열에서는 결과가 좋지 않았습니다. LLaVA-Next-7B의 base accuracy는 0.105로 매우 낮았고, DPO 이후에도 0.100으로 오히려 약간 떨어졌습니다. text-following error도 줄지 않았습니다. LLaVA-Next-13B도 base accuracy가 0.115에 그쳤기 때문에, 7B에서 negative 결과가 나온 상태에서 13B DPO까지 계속 돌리는 것은 좋은 GPU 사용이 아니라고 판단했습니다.
+반면 LLaVA-Next 계열에서는 결과가 좋지 않았습니다. 7B는 DPO 이후 accuracy가 0.105에서 0.100으로 내려갔고, 13B는 0.115에서 0.130으로 아주 조금 올랐지만 incorrect aux-hit가 92.7%에서 95.4%로 오히려 증가했습니다. 즉 13B는 몇 개의 정답을 추가로 맞혔지만, 남은 오답들은 더 강하게 corrupted text 안에 머물렀습니다.
 
-이 결과는 중요한 해석을 줍니다.
+이 결과는 중요한 경계 조건을 보여줍니다.
 
-> Text-following span DPO는 모델에게 DocVQA를 처음부터 가르치는 방법이 아니다. 기본적으로 이미지를 읽고 답할 수 있는 능력이 어느 정도 있는 모델에서, 이미지와 corrupted text가 충돌할 때 잘못된 쪽을 선택하는 행동을 교정하는 방법이다.
+> Text-following span DPO는 VLM에게 DocVQA 능력을 처음부터 가르치는 방법이 아니다. Base model이 이미 이미지를 읽고 답할 수 있을 때, corrupted text에 끌려가는 conflict-resolution 오류를 교정하는 방법이다.
 
-즉 Qwen 계열처럼 DocVQA를 어느 정도 수행할 수 있는 모델에서는 DPO가 잘 작동했습니다. 하지만 LLaVA-Next처럼 현재 prompt/template에서 DocVQA 성능이 매우 낮은 모델에는, DPO보다 먼저 prompt 형식이나 task adaptation을 맞추는 작업이 필요해 보입니다.
+Qwen 계열은 base 성능이 어느 정도 있었기 때문에 DPO가 잘 작동했습니다. 반면 LLaVA-Next는 현재 prompt/template에서 DocVQA base accuracy가 0.10 수준으로 매우 낮았습니다. 이런 상태에서는 DPO가 text bias를 줄이기보다, 낮은 task alignment 위에서 일부 답만 바꾸는 데 그쳤습니다.
 
-따라서 전체 주장은 "모든 VLM에서 무조건 통한다"가 아니라, 더 정확히는 다음과 같습니다.
+## 10. 발표용 핵심 메시지
 
-> 이 방법은 base VLM이 이미 문서 이미지를 어느 정도 읽을 수 있을 때 특히 효과적이다. 그 경우 DPO는 task ability 자체를 새로 만드는 것이 아니라, corrupted text에 끌려가는 conflict-resolution 오류를 줄이는 역할을 한다.
+PPT에서는 다음 흐름으로 설명하는 것이 가장 설득력 있습니다.
 
-## 10. 전체 결론
+1. 실제 VLM 응용에서는 이미지와 함께 OCR/retrieved/caption text가 들어가고, 이 텍스트는 틀릴 수 있다.
+2. 텍스트가 틀렸을 때 VLM이 이미지를 확인하지 않고 텍스트를 따라가면, 이는 단순 성능 문제가 아니라 multimodal grounding 실패다.
+3. 우리는 이 현상을 text-following error로 자동 탐지했다. 모델의 오답이 corrupted text 안에 있으면, 사람이 라벨링하지 않아도 high-precision failure로 볼 수 있다.
+4. 이 failure를 DPO pair로 바꾸면, 이미지 기반 정답을 chosen으로, corrupted text 기반 오답을 rejected로 둘 수 있다.
+5. 그래서 DPO는 naive한 RL 선택이 아니라, 이미지와 텍스트가 충돌할 때 무엇을 믿을지 학습시키는 자연스러운 방법이다.
+6. Qwen3/Qwen2에서는 accuracy가 크게 오르고 text-following error가 줄었다.
+7. GRPO는 reward와 sampling에 의존하기 때문에, 이미 깨끗한 chosen/rejected pair가 있는 이 문제에서는 DPO보다 불안정했다.
+8. LLaVA 결과는 이 방법의 한계도 보여준다. Base VLM이 task를 거의 풀지 못하면 DPO만으로는 충분하지 않다.
 
-이번 실험에서 가장 중요한 결론은 다음입니다.
+## 11. 전체 결론
 
-> VLM의 text bias는 단순한 성능 저하가 아니라, 이미지와 텍스트가 충돌할 때 텍스트를 더 믿어버리는 선택 오류로 볼 수 있다.
+이번 실험의 가장 중요한 결론은 다음입니다.
 
-이 관점에서 보면 DPO가 왜 효과적인지 자연스럽게 설명됩니다. DPO는 모델에게 정답만 알려주는 것이 아니라, corrupted text에서 온 그럴듯한 오답보다 이미지 기반 정답을 더 선호하도록 직접 학습시킵니다.
+> VLM의 text bias는 단순한 노이즈 강건성 문제가 아니라, 이미지와 텍스트가 충돌할 때 텍스트를 과하게 믿는 선택 오류다.
 
-실험적으로도 DocVQA에서 Qwen3-VL-8B base model은 corrupted condition에서 0.715 accuracy를 보였지만, text-following span DPO는 0.900까지 올랐고, LoRA rank 16에서는 0.915까지 개선되었습니다. Multi-condition error-mined DPO는 0.920까지 소폭 추가 개선되었습니다. Qwen2-VL-7B에서도 같은 방향의 개선이 나타났습니다. Base 0.570에서 DPO 0.775로 올라갔고, 41개를 교정하는 동안 regression은 없었습니다.
+우리는 이 선택 오류를 `text-following error`로 구체화했고, 이를 자동으로 DPO pair로 바꾸었습니다. 이 방식은 manual labeling 없이도 모델이 실제로 저지른 오류를 학습 신호로 사용할 수 있다는 장점이 있습니다.
 
-더 중요한 것은 text-following error의 감소입니다. Base model은 틀릴 때 대부분 corrupted text 안의 답을 따라갔지만, DPO 이후 이 비율이 크게 줄었습니다. 즉 DPO는 단순히 더 많이 맞힌 것이 아니라, 모델이 corrupted text에 끌려가는 오류 자체를 줄였습니다.
+Qwen3-VL-8B에서는 base accuracy 0.715가 DPO 후 0.900~0.920까지 올랐고, incorrect aux-hit는 89.5%에서 43.8~55.0% 수준으로 크게 내려갔습니다. Qwen2-VL-7B에서도 0.570에서 0.775로 개선되어 같은 방향의 효과가 반복되었습니다.
 
-SFT는 정답을 가르치는 데는 자연스럽지만, "그럴듯한 오답을 피하라"는 신호가 약합니다. GRPO는 reward 설계를 통해 이 문제를 다룰 수는 있지만, 이번 setting에서는 이미 명확한 chosen/rejected pair가 있었기 때문에 DPO보다 간접적이고 불안정했습니다. LLaVA-Next 결과는 이 방법의 한계도 보여줍니다. Base model이 DocVQA를 거의 풀지 못하는 상태에서는 DPO만으로는 충분하지 않았고, 먼저 prompt/template 또는 task adaptation을 맞춰야 합니다.
+반면 GRPO는 개선을 만들지 못했고, DPO 이후 추가 GRPO도 이득을 주지 못했습니다. 이는 이번 문제에서는 reward를 설계해 여러 sampled answer를 비교하는 것보다, 실제 text-following wrong answer와 GT answer를 직접 비교하는 DPO가 더 적합하다는 점을 보여줍니다.
 
-따라서 현재 가장 설득력 있는 스토리는 다음과 같습니다.
+LLaVA-Next 결과는 방법의 한계를 보여줍니다. Base DocVQA 성능이 매우 낮은 모델에서는 DPO만으로 text bias를 줄이기 어렵습니다. 따라서 이 방법은 task ability를 새로 만드는 방법이 아니라, 이미 어느 정도 task를 수행할 수 있는 VLM에서 text shortcut을 줄이는 방법으로 이해하는 것이 가장 정확합니다.
 
-> Text bias를 줄이기 위해서는 모든 오류를 무작정 학습시키는 것보다, corrupted text를 실제로 따라간 high-precision failure를 골라내고, 이를 image-grounded answer와 직접 비교시키는 preference learning이 효과적이다. 이 문제에서는 SFT보다 DPO가 더 직접적인 학습 신호를 제공하며, GRPO보다도 더 안정적으로 text-following behavior를 줄였다. 다만 이 효과는 base VLM이 이미 task를 어느 정도 수행할 수 있을 때 가장 잘 나타나며, LLaVA-Next처럼 DocVQA base 성능이 매우 낮은 경우에는 DPO 이전의 task/prompt alignment가 먼저 필요하다.
+최종적으로 이 연구의 주장은 다음처럼 정리할 수 있습니다.
+
+> Text bias를 줄이려면 모든 오류를 무작정 학습시키는 것보다, corrupted text를 실제로 따라간 high-precision failure를 골라내고, 이를 image-grounded answer와 직접 비교시키는 preference learning이 효과적이다. 이 문제에서는 SFT보다 DPO가 더 직접적인 신호를 제공했고, GRPO보다 안정적으로 text-following behavior를 줄였다. 다만 이 효과는 base VLM이 이미 시각 정보와 task를 어느 정도 이해할 때 가장 잘 나타난다.
