@@ -126,11 +126,20 @@ DocVQA seed 0 disjoint split 기준 결과는 다음과 같습니다.
 | Variant | Init | Steps | Accuracy | Incorrect aux-hit | Corrected / Regressed |
 |---|---|---:|---:|---:|---:|
 | Base Qwen3-VL-8B | - | - | 0.715 | 89.5% | - |
-| GRPO-only v1 | base | 100 | 0.710 | 89.7% | 0 / 1 |
-| GRPO-only v2 | base | 300 | 0.705 | 89.8% | 0 / 2 |
-| GRPO-only v3 dense reward | base | 300 | 0.705 | 89.8% | 0 / 2 |
+| GRPO-only, short pilot | base | 100 | 0.710 | 89.7% | 0 / 1 |
+| GRPO-only, longer training | base | 300 | 0.705 | 89.8% | 0 / 2 |
+| GRPO-only, dense reward | base | 300 | 0.705 | 89.8% | 0 / 2 |
 | Text-following span DPO | base | 700 | 0.900 | 55.0% | 37 / 0 |
-| Span DPO -> GRPO v2 | DPO | 150 | 0.900 | 60.0% | 37 / 0 |
+| Span DPO -> GRPO, longer-training reward | DPO | 150 | 0.900 | 60.0% | 37 / 0 |
+
+각 GRPO 설정의 차이는 다음과 같습니다.
+
+| 이름 | 무엇을 바꿨는가 | 의도 |
+|---|---|---|
+| GRPO-only, short pilot | base model에서 100 step만 짧게 학습 | GRPO가 기본적으로 text-following behavior를 움직일 수 있는지 빠르게 확인 |
+| GRPO-only, longer training | base model에서 300 step으로 학습 길이와 learning rate를 늘림 | 짧아서 효과가 없었던 것인지 확인 |
+| GRPO-only, dense reward | 300 step은 유지하되, 정답 보상과 corrupted text copy penalty를 더 촘촘하게 설계 | reward가 너무 sparse해서 학습이 안 된 것인지 확인 |
+| Span DPO -> GRPO | 먼저 DPO로 좋아진 모델에서 GRPO를 추가 학습 | DPO가 만든 좋은 출발점 위에서 GRPO가 추가 개선을 줄 수 있는지 확인 |
 
 이 결과를 보면 GRPO-only는 base model의 text-following behavior를 거의 바꾸지 못했습니다. Dense reward를 사용해도 결과가 크게 달라지지 않았습니다.
 
