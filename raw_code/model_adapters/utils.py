@@ -36,8 +36,9 @@ MODEL_LIST = [
 ]
 
 def model_initialization(model, device='cuda:0'):    
-    assert model in MODEL_LIST or 'model_ckpts' in model , f"Model {model} not found in the list of models"
-    if 'model_ckpts' in model:
+    is_local_checkpoint = 'model_ckpts' in model or model.startswith('checkpoints/')
+    assert model in MODEL_LIST or is_local_checkpoint, f"Model {model} not found in the list of models"
+    if is_local_checkpoint:
         processor = None
     else:
         from transformers import AutoProcessor
@@ -70,10 +71,10 @@ def model_initialization(model, device='cuda:0'):
     elif 'meta-llama' in model and 'vision' in model.lower():
         model = MllamaForConditionalGeneration.from_pretrained(model, torch_dtype=torch.float16).to(device)
         # model = MllamaForConditionalGeneration.from_pretrained(model, torch_dtype=torch.bfloat16).to(device)
-    elif 'model_ckpts' in model:
-        from transformers import AutoModelForVision2Seq, AutoProcessor
+    elif is_local_checkpoint:
+        from transformers import AutoProcessor
         output_dir = model
-        model = AutoModelForVision2Seq.from_pretrained(output_dir, torch_dtype=torch.bfloat16).to(device)
+        model = AutoModelForPreTraining.from_pretrained(output_dir, torch_dtype=torch.bfloat16).to(device)
         processor = AutoProcessor.from_pretrained(output_dir)
         print('Model loaded from:', output_dir)
                
