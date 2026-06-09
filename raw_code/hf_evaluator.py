@@ -24,7 +24,7 @@ from tqdm import tqdm
 # ensure raw_code is on path when running from raw_code/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 
 # import local eval utilities
 from eval_utils import best_subspan_em, eval_func, DocVQAEvaluator
@@ -362,7 +362,9 @@ class AdapterModel:
 
 def run_eval(ds_name, model_type, model_name, max_samples=200, sample_offset=0, out_file='eval_results.jsonl', model_kwargs=None, seed=0, subset='', input_type='text-only', text_type_filter='', use_original_question=False):
     # load dataset
-    if '/' in ds_name and ds_name.startswith('lmms-lab'):
+    if os.path.exists(ds_name):
+        ds = load_from_disk(ds_name)
+    elif '/' in ds_name and ds_name.startswith('lmms-lab'):
         # DocVQA has subtask when using load_dataset('lmms-lab/DocVQA', 'DocVQA')
         parts = ds_name.split('/')
         if len(parts) >= 3:
