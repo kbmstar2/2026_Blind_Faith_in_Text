@@ -269,6 +269,51 @@ Prediction-level comparison은 다음과 같다.
 
 이 결과는 연구의 boundary condition을 더 분명히 한다. DPO는 충분한 pair 수만 있으면 자동으로 text bias를 줄이는 방법이 아니다. 특히 TextVQA처럼 정답 표현이 다양하고, scene text reading과 answer-hint 사용이 강하게 얽혀 있는 setting에서는, DPO pair를 더 많이 모아도 preference signal이 깨끗하지 않으면 오히려 model behavior가 흔들릴 수 있다.
 
+### LLaVA-specific TextVQA DPO failure case 분석
+
+확장 실험의 failure case를 더 자세히 보면, 실패 원인이 단순한 평균 성능 하락이 아니라 "DPO 이후 corrupted answer hint 쪽으로 더 끌리는 현상"임을 확인할 수 있다.
+
+Corrupted heldout 500개에서 prediction이 바뀐 샘플은 100개였다. 이 중 base가 맞고 DPO가 틀린 regressed case는 23개, base가 틀리고 DPO가 맞춘 corrected case는 7개였다. 둘 다 틀린 샘플 중에서도 base는 hint를 따르지 않았는데 DPO만 hint와 겹치는 답으로 이동한 경우가 12개 있었다. 반대로 base가 hint를 따랐지만 DPO가 hint에서 벗어난 경우는 4개뿐이었다.
+
+| Failure type | Count |
+|---|---:|
+| Base correct -> DPO wrong | 23 |
+| Base wrong -> DPO correct | 7 |
+| Both wrong, DPO newly follows hint | 12 |
+| Both wrong, DPO moves away from hint | 4 |
+
+Regressed case의 question type은 short text가 가장 많았다.
+
+| Question type | Regressed count |
+|---|---:|
+| Short text | 14 |
+| Number | 5 |
+| Brand/company | 3 |
+| Year/date | 1 |
+
+대표 사례는 다음과 같다.
+
+| Question | GT | Corrupted hint | Base | DPO |
+|---|---|---|---|---|
+| what numbers are shown at the back of the cab? | 333 | 67178 | 333 | 67178 |
+| what year was this wine bottled? | 1997 | 2018 | 1997 | 2018 |
+| what does the sign on the top say is next? | no more toll gates | hotter | No more toll gates | Hotter |
+| what is the first word on each of the white labels? | chateau | culture | Chateau | Culture |
+| what number is on the plane? | 90 | 727 | 90 | 727 |
+| what is the company's name? | bertram | coca cola | Bertram | Coca Cola |
+| how many minutes are on the time clock? | 20 | 75 | 20 | 75 |
+
+이 예시들은 DPO가 "틀린 auxiliary hint를 거부하는 방향"으로 학습된 것이 아니라, 일부 케이스에서는 오히려 hint에 대한 반응성을 키웠음을 보여준다. 특히 숫자, 연도, 짧은 OCR token처럼 answer space가 좁고 hint가 질문 타입과 잘 맞는 경우, DPO가 시각 evidence보다 hint를 더 강하게 선택하는 일이 반복되었다.
+
+다만 corrected case도 없지는 않았다. 예를 들어 `Monacheng -> Salzburg`, `1324 -> 2013`, `King -> The Dark Tower`처럼 DPO가 더 그럴듯한 OCR answer로 이동한 경우가 있다. 하지만 corrected 7개보다 regressed 23개가 많고, newly hint-following failure도 12개 추가로 발생했기 때문에 전체적으로는 text bias 완화가 아니라 answer-hint dependence 증가로 보는 것이 더 타당하다.
+
+따라서 LLaVA-TextVQA에서 필요한 다음 보완은 단순히 pair 수를 늘리는 것이 아니라, 다음과 같은 filtering/regularization이다.
+
+1. Rejected answer가 corrupted hint와 정확히 겹치는 pair만 쓰되, chosen answer가 이미지 evidence에서 확실히 읽히는 샘플로 제한한다.
+2. Number/year/short-token처럼 hint 복사가 쉬운 question type은 별도 heldout을 두거나 더 강한 filtering을 적용한다.
+3. Corrupted pair만 학습하지 말고 match pair 또는 no-hint pair를 같이 넣어, 모델이 "auxiliary text를 항상 더 믿는" 방향으로 움직이지 않게 한다.
+4. DPO loss 외에 base model의 정답 유지 KL 또는 base-correct preservation set을 넣어, base가 이미 맞춘 케이스를 망가뜨리지 않도록 한다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
