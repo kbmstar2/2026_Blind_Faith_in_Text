@@ -103,6 +103,55 @@ Prediction-level comparison은 다음과 같다.
 
 > TextVQA에서는 cross-sample unrelated text를 붙여도 text-following failure가 많이 발생하지 않았다. 따라서 DocVQA DPO의 효과도 작게 나타났다. 이 결과는 우리의 방법이 "모든 VQA dataset에서 성능을 올리는 방법"이라기보다, base VLM이 실제로 corrupted auxiliary text를 따라가는 conflict setting에서 특히 효과적이라는 해석을 강화한다.
 
+### Corrupted text 생성 방식 C: question-type matched answer hint
+
+Cross-sample answer corruption도 conflict가 약했을 가능성이 있다. 아무 answer나 붙이면 질문과 맞지 않아 모델이 쉽게 무시할 수 있기 때문이다. 그래서 세 번째로 `question-type matched answer hint`를 만들었다.
+
+이 방식은 다음 두 가지를 바꾼다.
+
+1. Wrong answer를 고를 때 질문 타입을 맞춘다. 예를 들어 number 질문에는 다른 number, color 질문에는 다른 color, brand 질문에는 다른 brand answer를 우선 사용한다.
+2. Auxiliary text 문구를 단순 OCR list가 아니라 answer hint에 가깝게 만든다.
+
+Prompt에 들어간 auxiliary text 형식은 다음과 같다.
+
+```text
+A possibly noisy scene-text QA parser predicts the answer is: "{wrong_answer}".
+```
+
+즉 이전 두 실험보다 더 직접적으로 "이 답일 수 있다"는 보조 텍스트를 제공한다. 이 setting은 TextVQA에서 conflict를 최대한 강하게 재현하려는 시도다.
+
+### 결과 C: question-type matched answer hint
+
+| TextVQA type-matched pilot, n=200 | Corrupted soft acc | Corrupted exact acc | Match soft acc | Match exact acc | Incorrect aux-hit |
+|---|---:|---:|---:|---:|---:|
+| Base Qwen3-VL-8B | 0.821 | 0.870 | 0.911 | 0.945 | 11.5% |
+| DocVQA span DPO | 0.827 | 0.880 | 0.904 | 0.940 | 8.3% |
+
+Prediction-level comparison은 다음과 같다.
+
+| Condition | Changed | Corrected | Regressed |
+|---|---:|---:|---:|
+| Corrupted | 13 / 200 | 2 | 0 |
+| Match | 8 / 200 | 1 | 2 |
+
+### 세 TextVQA corruption 비교
+
+| Corruption | Base corrupted soft | DPO corrupted soft | Delta | Base exact | DPO exact | Base incorrect aux-hit |
+|---|---:|---:|---:|---:|---:|---:|
+| Same-image OCR distractor | 0.818 | 0.823 | +0.005 | 0.870 | 0.875 | 11.5% |
+| Cross-sample answer | 0.819 | 0.823 | +0.004 | 0.875 | 0.880 | 8.0% |
+| Question-type matched answer hint | 0.821 | 0.827 | +0.006 | 0.870 | 0.880 | 11.5% |
+
+Question-type matched answer hint는 앞선 두 방식보다 더 직접적인 conflict를 만들었지만, 여전히 base Qwen3가 corrupted answer hint를 많이 따라가지는 않았다. Base incorrect aux-hit는 11.5% 수준으로, DocVQA main experiment의 89.5%와 비교하면 매우 낮다.
+
+흥미로운 점은 match condition이다. Match에서는 auxiliary text가 정답을 직접 answer hint로 제공하므로 base exact accuracy가 0.945까지 올라간다. 즉 모델이 보조 텍스트를 완전히 무시하는 것은 아니다. 다만 보조 텍스트가 틀렸을 때는 이를 정답으로 강하게 따라가지 않는다. 이 차이는 TextVQA에서는 Qwen3가 이미지 안의 OCR evidence를 직접 확인하는 능력이 강하고, corrupted answer hint와 이미지 evidence가 충돌하면 이미지 쪽을 더 신뢰할 수 있음을 시사한다.
+
+따라서 TextVQA에서 conflict setting 재현이 어려웠던 이유는 다음처럼 정리할 수 있다.
+
+> TextVQA-Qwen3 조합에서는 auxiliary text가 정답일 때는 도움이 되지만, auxiliary text가 이미지와 충돌할 때는 모델이 이를 많이 따라가지 않는다. 즉 우리가 원하는 text-following failure 자체가 적게 발생한다.
+
+이 결과는 우리의 방법론을 약화한다기보다, 적용 조건을 더 명확히 한다. Text-following span DPO는 base model이 실제로 corrupted text를 따라가는 setting에서 효과가 크다. TextVQA처럼 base model이 visual/OCR evidence를 이미 강하게 사용하는 setting에서는 학습할 failure가 적기 때문에 개선 폭도 작다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
@@ -112,6 +161,7 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `our_codes/make_textvqa_corrupted_pilot.py` | TextVQA validation에서 corrupted/match local dataset 생성 |
 | `our_codes/run_textvqa_pilot_20260609.sh` | baseline, DPO, match/corrupted 평가 및 비교 실행 |
 | `our_codes/run_textvqa_cross_sample_pilot_20260609.sh` | cross-sample answer corruption 평가 실행 |
+| `our_codes/run_textvqa_type_matched_pilot_20260609.sh` | question-type matched answer hint 평가 실행 |
 | `hf_evaluator.py` | local `Dataset.save_to_disk()` 경로를 평가할 수 있도록 `load_from_disk` 지원 추가 |
 
 주요 산출물은 다음 경로에 저장된다.
@@ -122,3 +172,5 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `results/textvqa_pilot/` | baseline/DPO 평가 결과 및 comparison report |
 | `data/textvqa_cross_sample_corruption_pilot_seed0_200/` | cross-sample corrupted/match local dataset |
 | `results/textvqa_cross_sample_pilot/` | cross-sample baseline/DPO 평가 결과 및 comparison report |
+| `data/textvqa_type_matched_corruption_pilot_seed0_200/` | question-type matched corrupted/match local dataset |
+| `results/textvqa_type_matched_pilot/` | question-type matched baseline/DPO 평가 결과 및 comparison report |
