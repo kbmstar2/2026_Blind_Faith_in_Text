@@ -228,6 +228,47 @@ Prediction-level comparison은 다음과 같다.
 
 이 결과는 Qwen 계열에서 DPO가 잘 작동한 이유도 더 분명하게 만든다. DPO는 chosen/rejected pair가 깨끗하고, base model이 이미 visual/task competence를 갖고 있으며, 실패 원인이 "정답을 몰라서"가 아니라 "틀린 보조 텍스트를 과하게 믿어서"일 때 가장 잘 맞는다. LLaVA-TextVQA pilot은 이 조건을 충분히 만족하지 못했기 때문에, DPO를 적용해도 desired correction보다 answer-hint dependence가 더 강해졌을 가능성이 있다.
 
+### LLaVA-specific TextVQA DPO: mined pair 수 확장
+
+위 실험에서 가장 큰 의심점은 DPO pair가 너무 적다는 것이었다. 그래서 같은 생성 방식으로 TextVQA type-matched conflict dataset을 2000개까지 늘리고, 앞 1500개를 LLaVA-Next-7B base로 mining했다. 이때 heldout은 mining에 쓰지 않은 뒤 500개를 사용했다.
+
+확장된 mining 결과는 다음과 같다.
+
+| 항목 | 값 |
+|---|---:|
+| Mining corrupted samples | 1500 |
+| Base soft acc on mining split | 0.5281 |
+| Text-following error rows | 310 |
+| 최종 DPO pair | 310 |
+| Train / test pair 수 | 279 / 31 |
+
+이제 train pair 수는 DocVQA 기본 실험의 180~248개보다 작지 않다. 따라서 이 실험은 "이전 실패가 단순히 데이터 수가 너무 적어서였는가"를 확인하는 목적이 있다.
+
+학습은 LoRA r16, beta 0.1, lr 1e-5, max steps 300으로 수행했다. 결과는 다음과 같다.
+
+| LLaVA-Next-7B TextVQA-specific DPO, heldout n=500 | Base | DPO, train279 | Delta |
+|---|---:|---:|---:|
+| Corrupted soft acc | 0.4922 | 0.4548 | -0.0374 |
+| Corrupted exact acc | 0.526 | 0.494 | -0.032 |
+| Match soft acc | 0.8744 | 0.8734 | -0.0010 |
+| Match exact acc | 0.906 | 0.906 | 0.000 |
+| Corrupted incorrect aux-hit | 53.6% | 57.7% | +4.1%p |
+
+Prediction-level comparison은 다음과 같다.
+
+| Condition | Changed | Corrected | Regressed |
+|---|---:|---:|---:|
+| Corrupted | 100 / 500 | 7 | 23 |
+| Match | 50 / 500 | 6 | 6 |
+
+결과적으로 pair 수를 49개에서 279개로 늘려도 corrupted 성능은 개선되지 않았다. 오히려 base가 맞춘 것을 DPO가 틀리게 바꾸는 regressed case가 corrected case보다 훨씬 많았다. Match condition은 거의 변하지 않았지만, corrupted condition에서는 auxiliary hint에 들어간 오답과 prediction이 겹치는 비율이 더 올라갔다.
+
+따라서 LLaVA-TextVQA 실패를 단순히 "데이터가 49개라서"라고만 보기는 어렵다. 데이터 수를 DocVQA 수준으로 맞춰도 같은 방향의 실패가 반복되었기 때문이다. 더 가능성 높은 해석은 다음과 같다.
+
+> LLaVA-Next-7B의 TextVQA conflict failure는 DPO pair 수 부족만의 문제가 아니라, TextVQA의 answer normalization, chosen/rejected pair 품질, 그리고 answer-hint prompt에 대한 LLaVA의 민감도가 결합된 문제다.
+
+이 결과는 연구의 boundary condition을 더 분명히 한다. DPO는 충분한 pair 수만 있으면 자동으로 text bias를 줄이는 방법이 아니다. 특히 TextVQA처럼 정답 표현이 다양하고, scene text reading과 answer-hint 사용이 강하게 얽혀 있는 setting에서는, DPO pair를 더 많이 모아도 preference signal이 깨끗하지 않으면 오히려 model behavior가 흔들릴 수 있다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
@@ -241,6 +282,8 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `our_codes/run_textvqa_type_matched_transfer_models_20260609.sh` | Qwen2-VL/LLaVA-Next transfer model 평가 실행 |
 | `our_codes/make_local_textvqa_dpo_from_eval_errors.py` | LLaVA TextVQA conflict error에서 DPO pair 생성 |
 | `our_codes/run_llava_next_7b_textvqa_conflict_dpo_20260609.sh` | LLaVA-Next-7B TextVQA-specific conflict DPO 실행 |
+| `our_codes/run_llava_textvqa_conflict_mine_1500_20260609.sh` | LLaVA-Next-7B TextVQA conflict error를 1500개에서 mining |
+| `our_codes/run_llava_next_7b_textvqa_conflict_dpo_train1500_20260609.sh` | 279개 train pair로 LLaVA-Next-7B TextVQA-specific DPO 실행 |
 | `hf_evaluator.py` | local `Dataset.save_to_disk()` 경로를 평가할 수 있도록 `load_from_disk` 지원 추가 |
 
 주요 산출물은 다음 경로에 저장된다.
@@ -256,3 +299,6 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `results/textvqa_type_matched_transfer/` | Qwen2-VL/LLaVA-Next TextVQA conflict 평가 결과 |
 | `data/dpo_TextVQA_llava_next_7b_type_matched_conflict_seed0_train300/` | LLaVA-specific TextVQA DPO dataset |
 | `results/textvqa_llava_conflict_dpo/` | LLaVA-specific TextVQA DPO 평가 결과 |
+| `data/textvqa_type_matched_corruption_pilot_seed0_2000/` | 2000개 TextVQA type-matched conflict local dataset |
+| `data/dpo_TextVQA_llava_next_7b_type_matched_conflict_seed0_train1500/` | 1500개 mining 기반 LLaVA-specific TextVQA DPO dataset |
+| `results/textvqa_llava_conflict_dpo_train1500/` | 279개 train pair LLaVA-specific TextVQA DPO 평가 결과 |
