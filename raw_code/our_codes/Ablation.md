@@ -152,6 +152,40 @@ Question-type matched answer hint는 앞선 두 방식보다 더 직접적인 co
 
 이 결과는 우리의 방법론을 약화한다기보다, 적용 조건을 더 명확히 한다. Text-following span DPO는 base model이 실제로 corrupted text를 따라가는 setting에서 효과가 크다. TextVQA처럼 base model이 visual/OCR evidence를 이미 강하게 사용하는 setting에서는 학습할 failure가 적기 때문에 개선 폭도 작다.
 
+### Qwen2-VL / LLaVA-Next에서도 같은가
+
+Qwen3-VL-8B만 특이하게 corrupted answer hint를 잘 무시하는지 확인하기 위해, 같은 `question-type matched answer hint` dataset을 Qwen2-VL-7B, LLaVA-Next-7B, LLaVA-Next-13B에도 적용했다. 각 모델은 DocVQA text-following span DPO checkpoint와 base model을 비교했다.
+
+| Model | Base corrupted soft | DPO corrupted soft | Base match soft | DPO match soft | Base incorrect aux-hit | DPO incorrect aux-hit |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3-VL-8B | 0.821 | 0.827 | 0.911 | 0.904 | 11.5% | 8.3% |
+| Qwen2-VL-7B | 0.832 | 0.845 | 0.870 | 0.875 | 23.1% | 8.3% |
+| LLaVA-Next-7B | 0.535 | 0.443 | 0.863 | 0.874 | 50.0% | 62.0% |
+| LLaVA-Next-13B | 0.612 | 0.602 | 0.867 | 0.848 | 35.7% | 28.8% |
+
+Exact-match 기준의 prediction-level 변화는 다음과 같다.
+
+| Model | Corrupted exact: base -> DPO | Corrected / Regressed | Match exact: base -> DPO | Corrected / Regressed |
+|---|---:|---:|---:|---:|
+| Qwen3-VL-8B | 0.870 -> 0.880 | 2 / 0 | 0.945 -> 0.940 | 1 / 2 |
+| Qwen2-VL-7B | 0.870 -> 0.880 | 2 / 0 | 0.900 -> 0.905 | 1 / 0 |
+| LLaVA-Next-7B | 0.560 -> 0.460 | 0 / 20 | 0.895 -> 0.910 | 3 / 0 |
+| LLaVA-Next-13B | 0.650 -> 0.635 | 4 / 7 | 0.905 -> 0.890 | 1 / 4 |
+
+이 결과는 Qwen 계열과 LLaVA 계열이 TextVQA conflict setting에서 다르게 반응한다는 것을 보여준다.
+
+Qwen2-VL-7B는 Qwen3보다 base incorrect aux-hit가 높다. 즉 Qwen2는 corrupted answer hint를 더 자주 따라간다. 하지만 DocVQA DPO 이후에는 incorrect aux-hit가 23.1%에서 8.3%로 내려갔고, corrupted accuracy도 소폭 개선되었다. 이는 Qwen 계열에서는 DocVQA에서 학습한 text-following DPO가 TextVQA conflict에도 어느 정도 전이될 수 있음을 보여준다.
+
+반면 LLaVA-Next-7B는 conflict가 매우 잘 걸린다. Base incorrect aux-hit가 50.0%로 높고, match condition에서는 0.863으로 준수한 성능을 낸다. 즉 LLaVA-7B는 보조 텍스트가 정답이면 잘 활용하지만, corrupted answer hint가 들어오면 상당히 흔들린다. 더 중요한 점은 DocVQA DPO 이후 corrupted 성능이 0.535에서 0.443으로 크게 떨어지고, incorrect aux-hit도 50.0%에서 62.0%로 올라간다는 것이다. 실제 prediction 비교에서도 corrected는 0개, regressed는 20개였다.
+
+LLaVA-Next-13B도 base incorrect aux-hit가 35.7%로 Qwen보다 높다. 다만 DPO 이후 aux-hit는 28.8%로 줄었지만, accuracy는 0.612에서 0.602로 소폭 하락했다. 즉 13B는 7B보다 덜 무너지지만, DocVQA DPO가 TextVQA conflict를 안정적으로 개선한다고 보기는 어렵다.
+
+따라서 TextVQA conflict 재현에 대한 결론은 다음처럼 정리할 수 있다.
+
+> Conflict setting 자체는 LLaVA-Next에서 훨씬 잘 재현된다. 특히 LLaVA-7B는 corrupted answer hint를 강하게 따라간다. 다만 DocVQA에서 학습한 DPO가 이 TextVQA conflict를 바로 해결하지는 못했고, 오히려 LLaVA-7B에서는 text-following을 악화했다.
+
+이 결과는 중요한 방법론적 함의를 준다. Text bias 완화는 model family와 task format에 민감하다. Qwen 계열에서는 DocVQA DPO가 TextVQA로 약하게나마 전이되지만, LLaVA 계열에서는 같은 DPO가 다른 dataset의 answer-hint conflict를 안정적으로 해결하지 못한다. 따라서 LLaVA에서 TextVQA conflict를 줄이려면 DocVQA DPO를 그대로 가져오기보다, LLaVA 자체의 TextVQA conflict errors를 mining해서 별도의 DPO pair를 구성하는 편이 더 타당하다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
@@ -162,6 +196,7 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `our_codes/run_textvqa_pilot_20260609.sh` | baseline, DPO, match/corrupted 평가 및 비교 실행 |
 | `our_codes/run_textvqa_cross_sample_pilot_20260609.sh` | cross-sample answer corruption 평가 실행 |
 | `our_codes/run_textvqa_type_matched_pilot_20260609.sh` | question-type matched answer hint 평가 실행 |
+| `our_codes/run_textvqa_type_matched_transfer_models_20260609.sh` | Qwen2-VL/LLaVA-Next transfer model 평가 실행 |
 | `hf_evaluator.py` | local `Dataset.save_to_disk()` 경로를 평가할 수 있도록 `load_from_disk` 지원 추가 |
 
 주요 산출물은 다음 경로에 저장된다.
@@ -174,3 +209,4 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `results/textvqa_cross_sample_pilot/` | cross-sample baseline/DPO 평가 결과 및 comparison report |
 | `data/textvqa_type_matched_corruption_pilot_seed0_200/` | question-type matched corrupted/match local dataset |
 | `results/textvqa_type_matched_pilot/` | question-type matched baseline/DPO 평가 결과 및 comparison report |
+| `results/textvqa_type_matched_transfer/` | Qwen2-VL/LLaVA-Next TextVQA conflict 평가 결과 |
