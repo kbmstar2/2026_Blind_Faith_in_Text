@@ -186,6 +186,48 @@ LLaVA-Next-13B도 base incorrect aux-hit가 35.7%로 Qwen보다 높다. 다만 D
 
 이 결과는 중요한 방법론적 함의를 준다. Text bias 완화는 model family와 task format에 민감하다. Qwen 계열에서는 DocVQA DPO가 TextVQA로 약하게나마 전이되지만, LLaVA 계열에서는 같은 DPO가 다른 dataset의 answer-hint conflict를 안정적으로 해결하지 못한다. 따라서 LLaVA에서 TextVQA conflict를 줄이려면 DocVQA DPO를 그대로 가져오기보다, LLaVA 자체의 TextVQA conflict errors를 mining해서 별도의 DPO pair를 구성하는 편이 더 타당하다.
 
+### LLaVA-specific TextVQA conflict DPO
+
+위 결과를 바탕으로, LLaVA-Next-7B에 대해서는 DocVQA DPO를 그대로 전이하는 대신 TextVQA conflict setting에서 실제로 LLaVA가 틀린 샘플만 mining하여 별도의 DPO dataset을 만들었다.
+
+구체적으로는 `question-type matched answer hint` dataset 500개 중 앞 300개를 train-mining split으로 두고, LLaVA-Next-7B base가 corrupted auxiliary text에 끌려 오답을 낸 경우를 골랐다. 이때 DPO pair는 다음처럼 구성했다.
+
+| 항목 | 구성 |
+|---|---|
+| Chosen | TextVQA human answers의 majority-normalized GT answer |
+| Rejected | LLaVA-Next-7B base가 실제로 낸 text-following wrong prediction |
+| Train / test pair 수 | 49 / 6 |
+| 학습 설정 | LoRA r16, beta 0.1, lr 1e-5, max steps 150 |
+
+이 설정은 "LLaVA에는 LLaVA가 실제로 실패한 TextVQA conflict error로 직접 DPO를 걸면 나아지는가"를 확인하기 위한 pilot이다. 단, mining된 train pair가 49개뿐이므로 정식 결론이라기보다는 feasibility check에 가깝다.
+
+결과는 다음과 같다.
+
+| LLaVA-Next-7B TextVQA-specific DPO, heldout n=200 | Base | LLaVA-specific DPO | Delta |
+|---|---:|---:|---:|
+| Corrupted soft acc | 0.5565 | 0.5115 | -0.0450 |
+| Corrupted exact acc | 0.605 | 0.560 | -0.045 |
+| Match soft acc | 0.8775 | 0.8810 | +0.0035 |
+| Match exact acc | 0.915 | 0.925 | +0.010 |
+| Corrupted incorrect aux-hit | 49.4% | 55.7% | +6.3%p |
+
+Prediction-level comparison은 다음과 같다.
+
+| Condition | Changed | Corrected | Regressed |
+|---|---:|---:|---:|
+| Corrupted | 51 / 200 | 5 | 14 |
+| Match | 22 / 200 | 2 | 0 |
+
+즉 LLaVA 전용으로 TextVQA conflict DPO를 따로 만들었음에도, corrupted condition에서는 성능이 개선되지 않았다. 오히려 정확도는 떨어졌고, 틀린 답 중 auxiliary text와 겹치는 비율도 증가했다. 반면 match condition에서는 작은 개선이 있었다. 이는 모델이 auxiliary answer hint를 더 잘 활용하도록 움직였지만, 그 hint가 틀린 경우에는 충분히 거부하지 못했음을 시사한다.
+
+이번 pilot에서 실패한 가장 큰 이유는 데이터 규모와 pair 품질로 보인다. Train pair가 49개뿐이라 LLaVA가 "보조 텍스트를 무시하고 이미지를 보라"는 일반 규칙을 안정적으로 배우기 어렵다. 또한 TextVQA는 정답 표현이 다양하고, OCR answer normalization이 거칠 수 있어서, chosen/rejected preference가 항상 깨끗하지 않다. 실제로 corrected example도 일부 있었지만, regressed example이 더 많았다.
+
+따라서 이 실험의 결론은 다음처럼 두는 것이 안전하다.
+
+> LLaVA-Next에서는 TextVQA conflict 자체는 잘 발생하지만, 단순히 소량의 mined error pair로 DPO를 걸어서는 text bias가 바로 줄어들지 않았다. LLaVA에 이 방향을 적용하려면 더 큰 mined dataset, 더 엄격한 pair filtering, 그리고 match/corrupted balance를 고려한 학습 objective가 필요하다.
+
+이 결과는 Qwen 계열에서 DPO가 잘 작동한 이유도 더 분명하게 만든다. DPO는 chosen/rejected pair가 깨끗하고, base model이 이미 visual/task competence를 갖고 있으며, 실패 원인이 "정답을 몰라서"가 아니라 "틀린 보조 텍스트를 과하게 믿어서"일 때 가장 잘 맞는다. LLaVA-TextVQA pilot은 이 조건을 충분히 만족하지 못했기 때문에, DPO를 적용해도 desired correction보다 answer-hint dependence가 더 강해졌을 가능성이 있다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
@@ -197,6 +239,8 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `our_codes/run_textvqa_cross_sample_pilot_20260609.sh` | cross-sample answer corruption 평가 실행 |
 | `our_codes/run_textvqa_type_matched_pilot_20260609.sh` | question-type matched answer hint 평가 실행 |
 | `our_codes/run_textvqa_type_matched_transfer_models_20260609.sh` | Qwen2-VL/LLaVA-Next transfer model 평가 실행 |
+| `our_codes/make_local_textvqa_dpo_from_eval_errors.py` | LLaVA TextVQA conflict error에서 DPO pair 생성 |
+| `our_codes/run_llava_next_7b_textvqa_conflict_dpo_20260609.sh` | LLaVA-Next-7B TextVQA-specific conflict DPO 실행 |
 | `hf_evaluator.py` | local `Dataset.save_to_disk()` 경로를 평가할 수 있도록 `load_from_disk` 지원 추가 |
 
 주요 산출물은 다음 경로에 저장된다.
@@ -210,3 +254,5 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `data/textvqa_type_matched_corruption_pilot_seed0_200/` | question-type matched corrupted/match local dataset |
 | `results/textvqa_type_matched_pilot/` | question-type matched baseline/DPO 평가 결과 및 comparison report |
 | `results/textvqa_type_matched_transfer/` | Qwen2-VL/LLaVA-Next TextVQA conflict 평가 결과 |
+| `data/dpo_TextVQA_llava_next_7b_type_matched_conflict_seed0_train300/` | LLaVA-specific TextVQA DPO dataset |
+| `results/textvqa_llava_conflict_dpo/` | LLaVA-specific TextVQA DPO 평가 결과 |
