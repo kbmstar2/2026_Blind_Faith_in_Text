@@ -55,7 +55,13 @@ def answer_overlap(candidate, answers):
     return False
 
 
-def choose_wrong_answer(ocr_tokens, answers, fallback_pool, rng):
+def choose_wrong_answer(ocr_tokens, answers, fallback_pool, rng, corruption_mode):
+    if corruption_mode == "cross_sample_answer":
+        fallback = [a for a in fallback_pool if valid_answer(a) and not answer_overlap(a, answers)]
+        if fallback:
+            return rng.choice(fallback), "cross_sample_answer"
+        return None, None
+
     candidates = []
     for tok in ocr_tokens:
         t = norm(tok)
@@ -102,6 +108,11 @@ def main():
     parser.add_argument("--out_root", default="data/textvqa_corruption_pilot_seed0_200")
     parser.add_argument("--max_samples", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--corruption_mode",
+        choices=["same_image_ocr", "cross_sample_answer"],
+        default="same_image_ocr",
+    )
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
@@ -124,7 +135,9 @@ def main():
         if not answer:
             continue
         ocr_tokens = parse_list(item.get("ocr_tokens"))
-        wrong, wrong_source = choose_wrong_answer(ocr_tokens, [answer] + answers, fallback_pool, rng)
+        wrong, wrong_source = choose_wrong_answer(
+            ocr_tokens, [answer] + answers, fallback_pool, rng, args.corruption_mode
+        )
         if not wrong:
             continue
 
