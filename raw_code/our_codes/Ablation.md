@@ -314,6 +314,48 @@ Regressed case의 question type은 short text가 가장 많았다.
 3. Corrupted pair만 학습하지 말고 match pair 또는 no-hint pair를 같이 넣어, 모델이 "auxiliary text를 항상 더 믿는" 방향으로 움직이지 않게 한다.
 4. DPO loss 외에 base model의 정답 유지 KL 또는 base-correct preservation set을 넣어, base가 이미 맞춘 케이스를 망가뜨리지 않도록 한다.
 
+### LLaVA TextVQA strict+preserve DPO
+
+위 실패 분석에 맞춰, 단순히 pair 수를 늘리는 대신 DPO pair의 역할을 둘로 나눈 추가 실험을 수행했다.
+
+첫째, correction pair는 rejected answer가 corrupted hint와 실제로 강하게 겹치는 경우만 남겼다. 즉 DPO가 "틀린 hint를 따르는 응답"을 명확히 밀어내도록 했다. 둘째, base model이 corrupted condition에서도 이미 정답을 맞힌 샘플은 preservation pair로 추가했다. 이 경우 chosen은 base의 정답 응답, rejected는 corrupted hint이며, sample weight는 0.5로 낮게 주었다. 의도는 DPO가 conflict error를 고치면서도 base가 이미 이미지/OCR evidence로 맞힌 케이스를 망가뜨리지 않게 하는 것이었다.
+
+데이터 구성은 다음과 같다.
+
+| 항목 | 값 |
+|---|---:|
+| Mining split | TextVQA type-matched corrupted train 1500 |
+| Strict correction pairs | 288 |
+| Base-correct preservation pairs | 288 |
+| Total pairs | 576 |
+| Train / test pairs | 518 / 58 |
+| Preservation weight | 0.5 |
+
+학습은 LLaVA-Next-7B, LoRA r16, beta 0.1, lr 1e-5, max steps 300으로 진행했다. 평가는 이전 LLaVA TextVQA train279 실험과 동일한 heldout 500개를 사용했다.
+
+| LLaVA-Next-7B TextVQA heldout n=500 | Base | DPO train279 | Strict+preserve DPO | Strict+preserve delta vs base |
+|---|---:|---:|---:|---:|
+| Corrupted soft acc | 0.4922 | 0.4548 | 0.4530 | -0.0392 |
+| Corrupted exact acc | 0.526 | 0.494 | 0.492 | -0.034 |
+| Match soft acc | 0.8744 | 0.8734 | 0.8748 | +0.0004 |
+| Match exact acc | 0.906 | 0.906 | 0.908 | +0.002 |
+| Corrupted incorrect aux-hit | 53.6% | 57.7% | 57.9% | +4.3%p |
+
+Prediction-level comparison은 다음과 같다.
+
+| Condition | Changed | Corrected | Regressed |
+|---|---:|---:|---:|
+| Corrupted | 102 / 500 | 6 | 23 |
+| Match | 50 / 500 | 6 | 5 |
+
+결론적으로 preservation pair는 match condition의 성능 보존에는 도움이 되었다. 실제로 match exact accuracy는 0.906에서 0.908로 거의 유지되었고, corrected 6개와 regressed 5개로 균형도 나쁘지 않았다. 하지만 핵심 목표였던 corrupted conflict condition에서는 실패했다. corrupted exact accuracy는 0.526에서 0.492로 떨어졌고, incorrect prediction 중 auxiliary corrupted text와 겹치는 비율도 53.6%에서 57.9%로 증가했다.
+
+이 결과는 중요한 해석을 준다. LLaVA-TextVQA에서 문제는 단순히 "base가 맞힌 샘플을 보존하지 못해서"만 발생한 것이 아니다. strict filtering과 preservation을 넣어도 corrupted hint 쪽으로 끌리는 현상이 줄지 않았기 때문에, 현재 TextVQA conflict DPO 데이터는 LLaVA에게 "이미지를 보고 hint를 거부하라"는 신호보다 "텍스트 후보들 사이에서 그럴듯한 OCR token을 고르라"는 신호로 더 많이 작동한 것으로 보인다.
+
+따라서 LLaVA-TextVQA는 현재 연구의 좋은 main success case라기보다는 boundary condition을 보여주는 ablation으로 두는 것이 적절하다. 즉 DPO가 text bias를 줄이려면 base VLM이 해당 task에서 충분한 visual/OCR competence를 갖고 있어야 하고, rejected hint가 정말로 모델의 잘못된 text-following 원인을 대표해야 한다. TextVQA처럼 answer space가 짧고 OCR token이 다양하며 hint 자체가 plausible OCR answer처럼 보이는 setting에서는, preference pair만 늘려서는 오히려 hint sensitivity를 키울 수 있다.
+
+다음에 이 방향을 더 밀고 간다면, 단순 preservation보다 더 강한 기준이 필요하다. 예를 들어 이미지에서 chosen answer가 OCR로 실제 검출되는지 확인하는 evidence filter, corrupted hint가 같은 question type이지만 시각적으로 현재 이미지에 등장하지 않는다는 hard negative 검증, 그리고 DPO loss에 base-correct KL을 직접 넣는 방식이 필요하다. 다만 현 단계에서는 이 결과만으로도 "DPO가 아무 데이터에서나 자동으로 text bias를 줄이는 것은 아니며, base competence와 pair 품질이 boundary condition"이라는 주장을 뒷받침한다.
+
 ## 2. 재현 스크립트
 
 TextVQA pilot 관련 코드는 다음 파일에 있다.
@@ -329,6 +371,8 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `our_codes/run_llava_next_7b_textvqa_conflict_dpo_20260609.sh` | LLaVA-Next-7B TextVQA-specific conflict DPO 실행 |
 | `our_codes/run_llava_textvqa_conflict_mine_1500_20260609.sh` | LLaVA-Next-7B TextVQA conflict error를 1500개에서 mining |
 | `our_codes/run_llava_next_7b_textvqa_conflict_dpo_train1500_20260609.sh` | 279개 train pair로 LLaVA-Next-7B TextVQA-specific DPO 실행 |
+| `our_codes/make_local_textvqa_dpo_strict_preserve.py` | strict correction pair와 base-correct preservation pair를 함께 생성 |
+| `our_codes/run_llava_next_7b_textvqa_strict_preserve_dpo_20260610.sh` | strict+preserve LLaVA-Next-7B TextVQA DPO 실행 |
 | `hf_evaluator.py` | local `Dataset.save_to_disk()` 경로를 평가할 수 있도록 `load_from_disk` 지원 추가 |
 
 주요 산출물은 다음 경로에 저장된다.
@@ -347,3 +391,5 @@ TextVQA pilot 관련 코드는 다음 파일에 있다.
 | `data/textvqa_type_matched_corruption_pilot_seed0_2000/` | 2000개 TextVQA type-matched conflict local dataset |
 | `data/dpo_TextVQA_llava_next_7b_type_matched_conflict_seed0_train1500/` | 1500개 mining 기반 LLaVA-specific TextVQA DPO dataset |
 | `results/textvqa_llava_conflict_dpo_train1500/` | 279개 train pair LLaVA-specific TextVQA DPO 평가 결과 |
+| `data/dpo_TextVQA_llava_next_7b_strict_preserve_seed0_train1500/` | strict correction + preservation LLaVA TextVQA DPO dataset |
+| `results/textvqa_llava_strict_preserve_dpo/` | strict+preserve LLaVA TextVQA DPO 평가 결과 |
