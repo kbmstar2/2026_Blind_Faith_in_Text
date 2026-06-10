@@ -1,0 +1,125 @@
+\section{Experiments}
+
+\subsection{Metrics}
+
+We report three complementary metrics.
+\emph{Corrupted accuracy} measures task performance when auxiliary text is misleading.
+\emph{Incorrect aux-hit} measures the fraction of incorrect predictions that appear in the corrupted auxiliary text.
+Lower incorrect aux-hit indicates less text-following among remaining errors, but it is not sufficient by itself: a model could reduce aux-hit by hallucinating unrelated answers.
+Therefore, we interpret it together with corrupted accuracy and preservation on match/irrelevant conditions.
+We also report corrected/regressed counts relative to the base model when available.
+
+\subsection{DocVQA Main Results}
+
+DocVQA is our main testbed.
+We use Qwen3-VL-8B-Instruct as the primary model and evaluate on a held-out corrupted split.
+Table~\ref{tab:docvqa-main} shows that text-following span DPO substantially improves both accuracy and text-bias behavior.
+Increasing LoRA rank from 8 to 16 improves the result further, while the multi-condition error-mined variant gives the best overall performance.
+
+\begin{table}[t]
+\centering
+\caption{DocVQA corrupted held-out results with Qwen3-VL-8B.}
+\label{tab:docvqa-main}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccc}
+\toprule
+Method & Acc. & Incorrect aux-hit & Corr./Reg. \\
+\midrule
+Base & 0.715 & 89.5\% & -- \\
+TF-span DPO, r8 & 0.900 & 55.0\% & 37 / 0 \\
+TF-span DPO, r16 & 0.915 & 47.1\% & 40 / 0 \\
+Multi-cond. error DPO & \textbf{0.920} & \textbf{43.8\%} & 41 / 0 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The multi-condition result suggests that the highest-performing variant is not corrupted-only.
+However, the corrupted filter remains essential: corrupted rows still require the prediction to be copied from corrupted auxiliary text.
+The additional match, irrelevant, and no-text errors act as weak condition-specific regularizers rather than replacing the text-following signal.
+
+\subsection{DPO versus GRPO}
+
+We compare DPO with GRPO-only and DPO-to-GRPO variants on the same disjoint DocVQA split.
+GRPO samples multiple answers per prompt and optimizes a reward that encourages correctness and penalizes copying corrupted text.
+Despite this denser reward, GRPO does not move the held-out greedy behavior meaningfully.
+Table~\ref{tab:grpo} shows that DPO is the effective intervention in our setting.
+
+\begin{table}[t]
+\centering
+\caption{GRPO-style optimization does not improve over DPO on DocVQA.}
+\label{tab:grpo}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccc}
+\toprule
+Variant & Init & Acc. & Incorrect aux-hit \\
+\midrule
+Base & -- & 0.715 & 89.5\% \\
+GRPO-only, 100 steps & base & 0.710 & 89.7\% \\
+GRPO-only, 300 steps & base & 0.705 & 89.8\% \\
+GRPO-only, dense reward & base & 0.705 & 89.8\% \\
+TF-span DPO & base & \textbf{0.900} & \textbf{55.0\%} \\
+DPO $\rightarrow$ GRPO & DPO & \textbf{0.900} & 60.0\% \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+DPO-to-GRPO changes only a few held-out predictions relative to DPO and does not improve accuracy.
+This supports our hypothesis: when high-precision chosen/rejected pairs are available, direct pairwise optimization provides a clearer learning signal than free-form sampled-answer rewards.
+
+\subsection{VQAv2 Transfer Check}
+
+We repeat the disjoint split protocol on VQAv2.
+The effect is positive but weaker than on DocVQA.
+As shown in Table~\ref{tab:vqav2}, span DPO improves corrupted accuracy by 10 points and reduces incorrect aux-hit, but match and irrelevant preservation drop slightly.
+Adding auxiliary SFT preservation does not recover this drop and slightly worsens corrupted performance.
+
+\begin{table}[t]
+\centering
+\caption{VQAv2 transfer results with Qwen3-VL-8B.}
+\label{tab:vqav2}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+Variant & Corr. Acc. & Aux-hit & Match & Irr. \\
+\midrule
+Base & 0.545 & 65.9\% & 0.92 & 0.77 \\
+Span DPO & \textbf{0.645} & \textbf{40.8\%} & 0.90 & 0.75 \\
+Span DPO + SFT & 0.635 & 42.5\% & 0.90 & 0.75 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Model Transfer}
+
+We test whether the same mitigation extends beyond Qwen3-VL.
+Table~\ref{tab:model-transfer} summarizes Qwen2-VL-7B and LLaVA-Next results on DocVQA.
+Qwen2-VL benefits substantially, improving from 0.570 to 0.775 corrupted accuracy.
+LLaVA-Next, however, has very low base DocVQA accuracy under our prompt/template, and DPO provides little benefit.
+
+\begin{table}[t]
+\centering
+\caption{Model transfer on DocVQA. DPO helps Qwen2-VL but not LLaVA-Next under our setting.}
+\label{tab:model-transfer}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{llccc}
+\toprule
+Model & Setting & Acc. & Aux-hit & Corr./Reg. \\
+\midrule
+Qwen2-VL-7B & base & 0.570 & 93.0\% & -- \\
+Qwen2-VL-7B & span DPO & \textbf{0.775} & 86.7\% & 41 / 0 \\
+\midrule
+LLaVA-N-7B & base & 0.105 & 90.5\% & -- \\
+LLaVA-N-7B & span DPO & 0.100 & 91.7\% & 1 / 2 \\
+\midrule
+LLaVA-N-13B & base & 0.115 & 92.7\% & -- \\
+LLaVA-N-13B & span DPO & 0.130 & 95.4\% & 3 / 0 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+These results show that the method is not simply a universal post-hoc fix.
+It requires a base model that can already solve the task visually; DPO then teaches the model to resist misleading text.

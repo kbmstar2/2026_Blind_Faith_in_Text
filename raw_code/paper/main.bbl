@@ -1,0 +1,71 @@
+\begin{thebibliography}{9}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bai et~al.(2025)Bai, Chen, Liu, Wang, Ge, Song, Dang, Wang, Wang,
+  Tang, et~al.]{bai2025qwen25vl}
+Shuai Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Sibo Song, Kai
+  Dang, Peng Wang, Shijie Wang, Jun Tang, et~al.
+\newblock Qwen2.5-vl technical report.
+\newblock \emph{arXiv preprint arXiv:2502.13923}, 2025.
+
+\bibitem[Deng et~al.(2025)Deng, Cao, Chen, and Hooi]{deng2025words}
+Ailin Deng, Tri Cao, Zhirui Chen, and Bryan Hooi.
+\newblock Words or vision: Do vision-language models have blind faith in text?
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision
+  and Pattern Recognition}, 2025.
+
+\bibitem[Goyal et~al.(2017)Goyal, Khot, Summers-Stay, Batra, and
+  Parikh]{goyal2017vqav2}
+Yash Goyal, Tejas Khot, Douglas Summers-Stay, Dhruv Batra, and Devi Parikh.
+\newblock Making the v in vqa matter: Elevating the role of image understanding
+  in visual question answering.
+\newblock In \emph{Proceedings of the IEEE Conference on Computer Vision and
+  Pattern Recognition}, 2017.
+
+\bibitem[Liu et~al.(2023)Liu, Li, Wu, and Lee]{liu2023llava}
+Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong~Jae Lee.
+\newblock Visual instruction tuning.
+\newblock \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem[Liu et~al.(2024)Liu, Li, Li, Li, Zhang, Shen, and
+  Lee]{liu2024llavanext}
+Haotian Liu, Chunyuan Li, Yuheng Li, Bo Li, Yuanhan Zhang, Sheng Shen, and
+  Yong~Jae Lee.
+\newblock Llava-next: Improved reasoning, ocr, and world knowledge.
+\newblock \emph{LLaVA project blog}, 2024.
+
+\bibitem[Mathew et~al.(2021)Mathew, Karatzas, and Jawahar]{mathew2021docvqa}
+Minesh Mathew, Dimosthenis Karatzas, and C.~V. Jawahar.
+\newblock Docvqa: A dataset for vqa on document images.
+\newblock In \emph{Proceedings of the IEEE/CVF Winter Conference on
+  Applications of Computer Vision}, 2021.
+
+\bibitem[Rafailov et~al.(2023)Rafailov, Sharma, Mitchell, Ermon, Manning, and
+  Finn]{rafailov2023dpo}
+Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher~D.
+  Manning, and Chelsea Finn.
+\newblock Direct preference optimization: Your language model is secretly a
+  reward model.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2023.
+
+\bibitem[Shao et~al.(2024)Shao, Wang, Zhu, Xu, Song, Bi, Zhang, Zhang, Li, Wu,
+  and Guo]{shao2024deepseekmath}
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei
+  Zhang, Mingchuan Zhang, Y.~K. Li, Y. Wu, and Daya Guo.
+\newblock Deepseekmath: Pushing the limits of mathematical reasoning in open
+  language models.
+\newblock \emph{arXiv preprint arXiv:2402.03300}, 2024.
+
+\bibitem[Wang et~al.(2024)Wang, Bai, Tan, Wang, Fan, Bai, Chen, Liu, Wang, Ge,
+  et~al.]{wang2024qwen2vl}
+Peng Wang, Shuai Bai, Sinan Tan, Shijie Wang, Zhihao Fan, Jinze Bai, Keqin
+  Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, et~al.
+\newblock Qwen2-vl: Enhancing vision-language model's perception of the world
+  at any resolution.
+\newblock \emph{arXiv preprint arXiv:2409.12191}, 2024.
+
+\end{thebibliography}

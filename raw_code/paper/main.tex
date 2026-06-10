@@ -1,0 +1,48 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE
+\usepackage[review]{cvpr}
+
+%%%%%%%%% PACKAGES
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{enumitem}
+
+% Support for easy cross-referencing
+\usepackage[pagebackref,breaklinks,colorlinks]{hyperref}
+
+\def\paperID{*****}
+\def\confName{CVPR}
+\def\confYear{2026}
+
+\input{preamble}
+
+\title{Learning to Distrust Misleading Text:\\
+Preference Optimization for Reducing Text Bias in Vision-Language Models}
+
+\author{Anonymous CVPR submission\\
+Paper ID \paperID}
+
+\begin{document}
+\maketitle
+
+\input{sec/0_abstract}
+\input{sec/1_intro}
+\input{sec/2_related}
+\input{sec/3_method}
+\input{sec/4_experiments}
+\input{sec/5_analysis}
+\input{sec/6_conclusion}
+
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+}
+
+\end{document}

@@ -1,0 +1,57 @@
+\section{Analysis and Discussion}
+
+\subsection{Why DPO Fits This Problem}
+
+The corrupted-text setting gives unusually clean preference pairs.
+For many failures, the model's wrong answer is directly copied from the corrupted auxiliary text.
+Thus the comparison is explicit: the image-grounded answer should be preferred over the text-following wrong answer.
+DPO optimizes exactly this comparison.
+In contrast, GRPO must first sample useful candidate answers and then rely on a hand-designed reward.
+If the sampled candidates rarely contain the correct answer, or if most candidates are similar text-following errors, the relative reward signal is weak.
+This explains why GRPO logs can show diagnostic reward events while greedy held-out predictions barely change.
+
+\subsection{Interpreting Incorrect Aux-Hit}
+
+Incorrect aux-hit is useful but should not be optimized alone.
+A lower value means fewer remaining errors are copied from corrupted text, but it does not guarantee better visual grounding.
+For example, a model could avoid the corrupted text yet hallucinate an unrelated answer.
+Therefore, successful text-bias correction should satisfy three conditions:
+\begin{enumerate}[leftmargin=*]
+    \item corrupted accuracy should increase;
+    \item incorrect aux-hit should decrease;
+    \item match and irrelevant performance should be preserved.
+\end{enumerate}
+Our main DocVQA results satisfy these conditions.
+Some negative ablations do not: they reduce neither error copying nor accuracy, or they preserve match performance while failing on corrupted examples.
+
+\subsection{Why Multi-Condition Error Mining Helps}
+
+Text-following span DPO is the core filtering strategy, but the best result comes from multi-condition error-mined DPO.
+This does not mean that unfiltered errors are sufficient.
+Rather, corrupted errors remain strictly filtered for text-following behavior, while other conditions contribute lower-weight stability signals.
+This helps prevent the model from over-specializing to the corrupted prompt format.
+The gain is modest because non-corrupted failures are sparse in DocVQA, but it consistently improves the main held-out metric.
+
+\subsection{Boundary Conditions}
+
+Our transfer experiments reveal a clear boundary condition.
+The method works when the base VLM already has sufficient visual and OCR competence.
+Qwen-family models satisfy this condition on DocVQA and improve substantially.
+LLaVA-Next models, under our prompt/template, have very low base DocVQA accuracy.
+In this regime, DPO cannot create document-reading ability from scratch; it can only alter preferences among answers the model can already represent.
+
+TextVQA experiments lead to a related conclusion.
+DocVQA-trained DPO transfers weakly to TextVQA and does not reliably fix LLaVA-specific TextVQA conflict failures.
+Even after mining larger LLaVA-specific TextVQA DPO data and adding strict+preserve pairs, corrupted performance does not improve.
+This suggests that TextVQA conflict involves different OCR and answer-format dynamics than DocVQA.
+Therefore, we treat TextVQA and LLaVA results as boundary analyses rather than main success claims.
+
+\subsection{Limitations}
+
+Our study has several limitations.
+First, the text-following filter is an operational definition, not a causal proof.
+If a wrong answer appears in corrupted text, the model likely followed the text, but accidental overlap is possible.
+Second, most experiments use a single held-out split and a limited number of seeds due to compute constraints.
+Third, our GRPO implementation uses free-form sampled answers; a candidate-constrained GRPO-style objective may be a stronger comparison.
+Finally, the method assumes ground-truth answers are available for preference construction.
+This is suitable for benchmark adaptation and supervised mitigation, but not directly for fully unlabeled deployment.

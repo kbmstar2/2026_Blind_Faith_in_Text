@@ -1,0 +1,77 @@
+\section{Method}
+
+\subsection{Problem Setup}
+
+Each example consists of an image $x$, a question $q$, auxiliary text $t$, and a ground-truth answer $y$.
+We consider three main textual conditions.
+In the \emph{match} condition, the auxiliary text is consistent with the image.
+In the \emph{irrelevant} condition, the text is unrelated.
+In the \emph{corrupted} condition, the text contains a plausible but wrong answer.
+The desired behavior is not to ignore text unconditionally.
+Instead, the model should use text when it is reliable and fall back to visual evidence when text conflicts with the image.
+
+\subsection{Mining Text-Following Errors}
+
+We first evaluate a base VLM on corrupted examples.
+Let $\hat{y}$ be the model prediction.
+We define a \emph{text-following error} when all of the following hold:
+\begin{enumerate}[leftmargin=*]
+    \item the model prediction is incorrect;
+    \item the prediction is non-empty and does not match the ground truth;
+    \item the prediction appears in the corrupted auxiliary text.
+\end{enumerate}
+For the third condition, we use normalized string matching.
+For multi-token answers, we also accept high token overlap with the auxiliary text.
+This filtering is important: an arbitrary wrong answer is not necessarily a text-bias error, but an incorrect prediction copied from corrupted text is a much stronger signal.
+
+For each mined error, we construct a DPO pair:
+\begin{equation}
+    y^+ = y, \qquad y^- = \hat{y},
+\end{equation}
+where $y^+$ is the image-grounded answer and $y^-$ is the model's text-following wrong answer.
+We call this dataset \emph{text-following span DPO}.
+
+\subsection{DPO Objective}
+
+Given a policy $\pi_\theta$ and a reference policy $\pi_{\mathrm{ref}}$, DPO optimizes the preference that $y^+$ should be more likely than $y^-$ under the prompt $(x,q,t)$:
+\begin{equation}
+\begin{split}
+\mathcal{L}_{\mathrm{DPO}}
+= - \log \sigma \Big(
+\beta \big[
+& \log \pi_\theta(y^+|x,q,t)
+- \log \pi_{\mathrm{ref}}(y^+|x,q,t) \\
+-& \log \pi_\theta(y^-|x,q,t)
++ \log \pi_{\mathrm{ref}}(y^-|x,q,t)
+\big] \Big).
+\end{split}
+\end{equation}
+In our setting, this objective directly encodes the desired correction:
+the image-grounded answer should be preferred over the corrupted-text answer.
+
+\subsection{Multi-Condition Error-Mined DPO}
+
+Text-following span DPO uses only corrupted examples.
+To reduce drift and improve stability, we also test a multi-condition extension.
+We mine errors from corrupted, match, irrelevant, and no-text evaluations.
+For corrupted examples, we keep the strict text-following filter: the wrong prediction must appear in corrupted auxiliary text.
+For match, irrelevant, and no-text examples, we use a broader condition-specific error filter: the prediction must be incorrect, non-empty, and distinct from the ground truth.
+
+We assign lower weights to non-corrupted errors:
+\begin{equation}
+\begin{aligned}
+w_{\mathrm{corrupted}}&=1.0, &
+w_{\mathrm{match}}&=0.25,\\
+w_{\mathrm{irrelevant}}&=0.5, &
+w_{\mathrm{no\text{-}text}}&=0.5.
+\end{aligned}
+\end{equation}
+This preserves the central text-bias signal while adding weak regularization from other conditions.
+
+\subsection{GRPO-Style Baselines}
+
+We also test GRPO-style optimization.
+For each prompt, the model samples multiple candidate answers.
+A reward function gives positive reward for matching the chosen answer and penalties for matching the rejected answer, misleading spans mined from corrupted text, or any answer copied from the auxiliary text.
+The reward also mildly encourages short answer-like completions.
+This tests whether online sampled-answer optimization can discover the same correction signal without explicit pairwise DPO.

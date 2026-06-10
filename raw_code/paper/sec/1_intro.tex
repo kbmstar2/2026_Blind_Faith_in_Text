@@ -1,0 +1,37 @@
+\section{Introduction}
+
+Vision-language models (VLMs) are increasingly used in settings where images are accompanied by textual context: document images with OCR, screenshots with metadata, retrieved descriptions, captions, or user-provided hints.
+Such text can be helpful when it is correct, but it can also become a shortcut.
+When textual context conflicts with the image, a VLM may answer from the text rather than from visual evidence.
+Deng et al.~\cite{deng2025words} describe this phenomenon as ``blind faith in text'', showing that several VLMs disproportionately trust textual information under conflict.
+
+This failure is not merely a benchmark artifact.
+In practical systems, auxiliary text is often produced by retrieval, OCR, captioning, or prior model predictions.
+All of these sources can be noisy.
+If a VLM over-trusts such text, the model can produce confident but visually ungrounded answers.
+For document VQA, this is particularly important: the model must decide whether the image or the accompanying text should be trusted when they disagree.
+
+We ask a targeted question:
+\emph{Can we reduce text-following failures by directly training a VLM to prefer image-grounded answers over its own corrupted-text errors?}
+Our key observation is that the corrupted-text setting naturally produces preference pairs.
+If a model answers incorrectly and its prediction appears in the corrupted auxiliary text, then the model has likely followed the misleading text.
+The ground-truth answer can be used as the preferred response, and the model's text-following prediction can be used as the dispreferred response.
+This gives a high-precision preference signal without manual labeling.
+
+We instantiate this idea with Direct Preference Optimization (DPO)~\cite{rafailov2023dpo}.
+Unlike online reinforcement learning methods such as PPO or GRPO~\cite{shao2024deepseekmath}, DPO directly optimizes pairwise preferences.
+This is well aligned with our setting: the contrastive pair is already available as \{image-grounded answer, text-following wrong answer\}.
+We compare DPO against GRPO-style sampled-answer optimization, preservation SFT, model transfer, and dataset transfer.
+
+Our study makes three empirical findings.
+First, on DocVQA with Qwen3-VL-8B, DPO sharply improves corrupted-text robustness while reducing the rate of text-copying among remaining errors.
+Second, broadening DPO from corrupted-only text-following errors to multi-condition error-mined pairs yields the strongest result, suggesting that condition-specific error mining can improve stability.
+Third, the method has an important boundary condition: it works best when the base VLM already has enough visual/OCR competence.
+Qwen-family models benefit substantially, while LLaVA-Next models under our prompt and template show weak DocVQA base performance and limited benefit.
+
+We summarize our contributions as follows:
+\begin{itemize}[leftmargin=*]
+    \item We define an automatic text-following error mining procedure for corrupted-text VQA, requiring both incorrectness and overlap between the wrong prediction and corrupted auxiliary text.
+    \item We show that DPO on these mined pairs substantially reduces text bias on DocVQA and transfers directionally to VQAv2 and Qwen2-VL.
+    \item We compare DPO, GRPO, SFT preservation, multi-condition error mining, and model transfer, clarifying when preference optimization helps and when it does not.
+\end{itemize}

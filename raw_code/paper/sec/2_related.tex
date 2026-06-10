@@ -1,0 +1,25 @@
+\section{Related Work}
+
+\paragraph{Text bias in VLMs.}
+VLMs are trained to fuse visual and textual inputs, but fusion can become asymmetric when textual context is easier to exploit than visual evidence.
+The most directly related work is Words or Vision~\cite{deng2025words}, which introduces corrupted textual variations and shows that VLMs may trust text over vision when the two conflict.
+Our work follows this diagnostic setting but focuses on mitigation through preference optimization.
+Rather than only measuring the degradation under corrupted text, we use the model's own corrupted-text failures as training signal.
+
+\paragraph{Document and visual question answering.}
+DocVQA~\cite{mathew2021docvqa} evaluates question answering over document images, requiring OCR, layout understanding, and reasoning over visual text.
+VQAv2~\cite{goyal2017vqav2} evaluates open-ended visual question answering with reduced language priors compared to earlier VQA datasets.
+We use DocVQA as the main testbed because conflict between visual document evidence and auxiliary text is central to the task.
+VQAv2 is used as a transfer check to test whether the mitigation is specific to document images.
+
+\paragraph{Preference optimization.}
+Preference optimization has become a common alternative to supervised fine-tuning for aligning generative models.
+DPO~\cite{rafailov2023dpo} directly optimizes a policy from chosen/rejected pairs without training an explicit reward model or running online RL.
+This makes it attractive for our setting because corrupted-text evaluation yields natural preference pairs.
+GRPO~\cite{shao2024deepseekmath} is an online reinforcement learning method that estimates a group-relative baseline from multiple sampled responses.
+We compare DPO with GRPO-style optimization and find that free-form sampled-answer rewards are less effective for this failure mode.
+
+\paragraph{Modern VLMs.}
+Qwen2-VL~\cite{wang2024qwen2vl} and Qwen2.5-VL~\cite{bai2025qwen25vl} emphasize dynamic-resolution visual processing and strong document/OCR capability.
+LLaVA-style models~\cite{liu2023llava,liu2024llavanext} provide a widely used visual instruction tuning framework.
+Our transfer experiments suggest that these model families differ substantially in the base competence needed for text-bias correction.
