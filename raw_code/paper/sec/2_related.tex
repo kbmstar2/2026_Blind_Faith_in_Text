@@ -9,12 +9,20 @@ Deng et al.~\cite{deng2025words} also study SFT with text augmentation and show 
 They further note that text-only data helps prevent models from rejecting text indiscriminately.
 We build on this insight: the goal is conditional text use, not blanket text removal.
 Our contribution is to replace broad SFT augmentation with model-specific preference pairs mined from actual text-following failures.
+Other recent conflict-oriented evaluations similarly study how VLMs behave when image and text cues disagree.
+Mixed Signals~\cite{kim2025mixedsignals} constructs mismatched image-text pairs across domains and studies model biases under conflicting signals.
+These works motivate our focus on conflict resolution rather than ordinary VQA accuracy alone.
+In contrast to benchmark-only studies, we explicitly turn conflict errors into training pairs.
 
 \paragraph{Document and visual question answering.}
 DocVQA~\cite{mathew2021docvqa} evaluates question answering over document images, requiring OCR, layout understanding, and reasoning over visual text.
 VQAv2~\cite{goyal2017vqav2} evaluates open-ended visual question answering with reduced language priors compared to earlier VQA datasets.
 We use DocVQA as the main testbed because conflict between visual document evidence and auxiliary text is central to the task.
 VQAv2 is used as a transfer check to test whether the mitigation is specific to document images.
+Text-centric VQA datasets such as TextVQA~\cite{singh2019textvqa}, ST-VQA~\cite{biten2019stvqa}, OCR-VQA~\cite{mishra2019ocrvqa}, and InfographicVQA~\cite{mathew2022infographicvqa} emphasize reading and reasoning over text inside images.
+These tasks are related but not identical to our corrupted-auxiliary-text setting.
+In TextVQA, scene text is often the correct visual evidence; in our DocVQA conflict setting, auxiliary text can be an external shortcut that contradicts the image.
+This distinction explains why we report TextVQA as a boundary check rather than as the main benchmark.
 
 \paragraph{Preference optimization.}
 Preference optimization has become a common alternative to supervised fine-tuning for aligning generative models.
@@ -22,6 +30,11 @@ DPO~\cite{rafailov2023dpo} directly optimizes a policy from chosen/rejected pair
 This makes it attractive for our setting because corrupted-text evaluation yields natural preference pairs.
 GRPO~\cite{shao2024deepseekmath} is an online reinforcement learning method that estimates a group-relative baseline from multiple sampled responses.
 We compare DPO with GRPO-style optimization and find that free-form sampled-answer rewards are less effective for this failure mode.
+Several recent works adapt preference optimization to multimodal models.
+mDPO~\cite{wang2024mdpo} argues that standard multimodal DPO can suffer from unconditional preference learning, where the image condition is underused.
+Re-Align~\cite{xing2025realign} constructs dual preference data with retrieval to incorporate visual preference signals.
+Task Preference Optimization~\cite{yan2025tpo} uses task-specific visual supervision to improve multimodal perception, and on-policy DPO has been explored for hallucination mitigation~\cite{yang2025hallucinationdpo}.
+Our work is complementary: rather than building generic human or retrieval preferences, we mine preference pairs from a specific modality-conflict failure mode.
 
 \paragraph{Modern VLMs.}
 Qwen2-VL~\cite{wang2024qwen2vl} and Qwen2.5-VL~\cite{bai2025qwen25vl} emphasize dynamic-resolution visual processing and strong document/OCR capability.

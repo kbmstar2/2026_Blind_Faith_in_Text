@@ -9,6 +9,20 @@ Lower incorrect aux-hit indicates less text-following among remaining errors, bu
 Therefore, we interpret it together with corrupted accuracy and preservation on match/irrelevant conditions.
 We also report corrected/regressed counts relative to the base model when available.
 
+\subsection{Implementation Details}
+
+Unless otherwise stated, we train Qwen3-VL-8B-Instruct with LoRA adapters.
+The main DocVQA split uses 800 corrupted examples for mining and a disjoint held-out corrupted set of 200 examples for evaluation.
+The text-following span dataset is built only from base-model failures satisfying the corrupted-text overlap filter.
+For the initial span-DPO run, we use LoRA rank 8, LoRA alpha 16, learning rate $10^{-5}$, DPO $\beta=0.1$, and 700 DPO steps.
+The stronger rank-16 runs use LoRA alpha 32 with the same learning rate and number of steps.
+The multi-condition error-mined run uses 273 total preference rows, split into 245 train and 28 test rows, with source counts of 200 corrupted, 7 match, 33 irrelevant, and 33 no-text errors.
+It trains for 900 DPO steps with LoRA rank 16, alpha 32, learning rate $10^{-5}$, and $\beta=0.1$.
+
+All reported transfer experiments use the same evaluation code and the same model family-specific prompt template used during mining.
+This matters because our LLaVA-Next experiments show strong sensitivity to task and template compatibility.
+We therefore interpret LLaVA results as boundary evidence rather than as a claim that the method is model-agnostic.
+
 \subsection{DocVQA Main Results}
 
 DocVQA is our main testbed.
@@ -37,6 +51,36 @@ Multi-cond. error DPO & \textbf{0.920} & \textbf{43.8\%} & 41 / 0 \\
 The multi-condition result suggests that the highest-performing variant is not corrupted-only.
 However, the corrupted filter remains essential: corrupted rows still require the prediction to be copied from corrupted auxiliary text.
 The additional match, irrelevant, and no-text errors act as weak condition-specific regularizers rather than replacing the text-following signal.
+
+\subsection{Hyperparameter and Construction Ablations}
+
+We run a small $2 \times 2$ grid over DPO $\beta$ and LoRA rank on the same DocVQA split.
+Table~\ref{tab:hyperparam} shows that increasing LoRA rank from 8 to 16 is more useful than increasing $\beta$ from 0.1 to 0.2.
+Rank 16 improves corrupted accuracy from 0.900 to 0.915 and reduces incorrect aux-hit from 55.0\% to 47.1\%, while changing $\beta$ does not change the corrupted metric in this grid.
+
+\begin{table}[t]
+\centering
+\caption{DocVQA DPO hyperparameter grid. Higher LoRA capacity matters more than $\beta$ in this setting.}
+\label{tab:hyperparam}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{cccccc}
+\toprule
+$\beta$ & Rank & Acc. & Aux-hit & Corr./Reg. & Match/Irr. \\
+\midrule
+0.1 & 8  & 0.900 & 55.0\% & 37 / 0 & 1.00 / 0.96 \\
+0.2 & 8  & 0.900 & 55.0\% & 37 / 0 & 0.98 / 0.91 \\
+0.1 & 16 & \textbf{0.915} & \textbf{47.1\%} & 40 / 0 & 0.98 / 0.91 \\
+0.2 & 16 & \textbf{0.915} & \textbf{47.1\%} & 40 / 0 & 0.98 / 0.91 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+We also test whether simply duplicating the same corrupted preference pair under multiple prompt conditions is sufficient.
+Prompt-augmented counterfactual DPO expands each mined corrupted failure into corrupted, no-text, match, and irrelevant prompt wrappers, but keeps the same rejected answer.
+This ties plain rank-16 DPO at 0.915 corrupted accuracy and 47.1\% incorrect aux-hit.
+By contrast, multi-condition error-mined DPO uses the actual failed prediction from each condition as the rejected answer, improving to 0.920 accuracy and 43.8\% incorrect aux-hit.
+This suggests that condition-specific rejected answers are more useful than prompt augmentation alone.
 
 \subsection{DPO versus GRPO}
 
@@ -109,6 +153,39 @@ Span DPO + SFT & 0.635 & 42.5\% & 0.90 & 0.75 \\
 \end{tabular}
 }
 \end{table}
+
+\subsection{TextVQA Boundary Check}
+
+We also test whether a DocVQA-trained span DPO adapter transfers to TextVQA.
+TextVQA is useful because it is text-centric, but it differs from DocVQA conflict: scene text is often the correct visual evidence rather than an external auxiliary shortcut.
+We therefore construct several TextVQA corruption variants, including same-image OCR distractors, cross-sample answers, and question-type matched answer hints.
+
+Table~\ref{tab:textvqa-boundary} shows the strongest TextVQA conflict variant, question-type matched answer hints, on 200 examples.
+For Qwen3-VL, the base model already has low incorrect aux-hit under corrupted TextVQA hints, and DocVQA DPO gives only a small gain.
+Qwen2-VL shows a similar but slightly stronger positive direction.
+LLaVA-Next behaves differently: the conflict is stronger, but DocVQA DPO does not reliably fix it and can worsen corrupted accuracy.
+
+\begin{table}[t]
+\centering
+\caption{TextVQA question-type matched answer-hint transfer. DocVQA DPO transfers weakly to Qwen models but not reliably to LLaVA-Next.}
+\label{tab:textvqa-boundary}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+Model & Base Acc. & DPO Acc. & Base aux-hit & DPO aux-hit \\
+\midrule
+Qwen3-VL-8B & 0.821 & 0.827 & 11.5\% & 8.3\% \\
+Qwen2-VL-7B & 0.832 & 0.845 & 23.1\% & 8.3\% \\
+LLaVA-N-7B & 0.535 & 0.443 & 50.0\% & 62.0\% \\
+LLaVA-N-13B & 0.612 & 0.602 & 35.7\% & 28.8\% \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+These results sharpen the scope of our claim.
+The method is not a universal accuracy booster for all text-heavy VQA tasks.
+It is most effective when the base model actually exhibits text-following failures under corrupted auxiliary text and already has enough visual/OCR competence to answer from the image.
 
 \subsection{Model Transfer}
 
