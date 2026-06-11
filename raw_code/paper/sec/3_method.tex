@@ -40,11 +40,8 @@ By requiring the wrong answer to appear in the corrupted auxiliary text, we isol
 the model saw a misleading textual cue and produced that cue as its answer.
 This makes the preference pair interpretable as a conflict-resolution example rather than as generic answer correction.
 
-This distinction is important for our comparison with SFT and GRPO.
-SFT can teach the correct answer, but it does not explicitly contrast the correct answer against the misleading answer that the model actually preferred.
-GRPO can reward correct answers, but it must discover useful alternatives through sampling.
-In contrast, text-following error mining uses the base model's own failure as the rejected response.
-The resulting pair asks the model to reverse a concrete preference it already exhibited under conflict.
+This distinction is important for our comparison with SFT and GRPO:
+SFT teaches the correct answer, GRPO must discover useful alternatives through sampling, while our mined DPO pair directly asks the model to reverse a concrete preference it already exhibited under conflict.
 
 \subsection{Why This Is Not Text Removal}
 
@@ -54,10 +51,8 @@ In real document and visual-question-answering settings, auxiliary text may come
 Some of it is useful, some is irrelevant, and some may be wrong.
 The model must therefore decide whether the text is supported by the image, not merely whether text is present.
 
-Our training data encodes this conditional behavior through the surrounding conditions.
-Corrupted examples provide the main negative signal: a plausible text answer should lose when it conflicts with the image.
-Match examples test whether the model can still benefit from reliable text.
-Irrelevant and no-text examples test whether the model can answer without overusing unsupported context.
+Our training data encodes this conditional behavior through the surrounding conditions:
+corrupted examples provide the main negative signal, match examples test reliable text use, and irrelevant/no-text examples test whether the model can answer without overusing unsupported context.
 Thus the desired policy is not
 \begin{equation}
 \text{always distrust text},

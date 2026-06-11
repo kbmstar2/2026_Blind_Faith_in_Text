@@ -42,13 +42,6 @@ If the intervention is generic SFT, the model may improve because it sees more c
 If the intervention is online RL with a scalar reward, the method depends heavily on candidate sampling and reward shaping.
 We therefore focus on preference pairs derived from actual text-following failures, where the chosen and rejected answers instantiate the desired behavioral reversal.
 
-The practical motivation is also broader than document VQA.
-Modern VLM pipelines often combine images with OCR outputs, generated captions, retrieved passages, or user-provided textual descriptions.
-These textual channels are useful because they can expose information that the model might otherwise miss.
-At the same time, they create a failure mode in which a visually plausible but wrong text snippet overrides the image.
-A robust VLM should not be text-blind; it should be text-skeptical when the text is unsupported.
-This paper evaluates whether DPO can teach this conditional skepticism from a small number of model-specific failures.
-
 Our study makes three empirical findings.
 First, on DocVQA with Qwen3-VL-8B, DPO sharply improves corrupted-text robustness while reducing the rate of text-copying among remaining errors.
 Second, broadening DPO from corrupted-only text-following errors to multi-condition error-mined pairs yields the strongest result, suggesting that condition-specific error mining can improve stability.

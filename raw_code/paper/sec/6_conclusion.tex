@@ -2,9 +2,4 @@
 
 We studied preference optimization as a mitigation for VLM text bias under corrupted auxiliary text.
 By mining text-following errors and training with DPO, we convert a diagnostic failure mode into a direct preference-learning signal.
-On DocVQA, this substantially improves corrupted-text accuracy and reduces the rate at which remaining errors copy misleading text.
-The strongest variant, multi-condition error-mined DPO, combines strict corrupted-error filtering with lower-weight errors from match, irrelevant, and no-text conditions.
-GRPO-style sampled-answer optimization and preservation SFT do not improve over DPO in our experiments.
-These comparisons also clarify why simply ignoring text is not the desired solution: the target behavior is conditional trust, not blanket text removal.
-The results support a precise conclusion: DPO is effective when the base VLM already has visual/OCR competence and the preference pairs accurately capture text-following failures.
-When this condition is not met, as in our LLaVA-Next DocVQA setting, preference optimization alone is insufficient.
+On DocVQA, DPO improves corrupted-text accuracy and reduces copying from misleading text.
