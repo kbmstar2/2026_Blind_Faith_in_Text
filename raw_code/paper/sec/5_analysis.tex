@@ -13,21 +13,10 @@ In contrast, GRPO must first sample useful candidate answers and then rely on a 
 If the sampled candidates rarely contain the correct answer, or if most candidates are similar text-following errors, the relative reward signal is weak.
 This explains why GRPO logs can show diagnostic reward events while greedy held-out predictions barely change.
 
-\paragraph{Relation to ground-truth answers.}
 Our DPO construction uses the benchmark answer as the chosen response.
-This is appropriate because our goal is not open-ended human preference alignment, but targeted correction of VQA conflict errors.
-In ordinary preference alignment, a chosen response may be selected because it is more helpful, harmless, or stylistically preferred.
-In VQA, the preference is more concrete: the correct answer should be preferred over an incorrect answer that was copied from misleading text.
-The ground truth therefore acts as an anchor for visual correctness, while the rejected response identifies the model's specific text-biased failure.
-This makes our DPO closer to supervised preference correction than to broad conversational RLHF.
-
-\paragraph{Why DPO can outperform SFT here.}
-The key advantage of DPO is the contrastive form of the signal.
-An SFT example says, ``given this prompt, output the correct answer.''
-The model may learn that answer pattern, but the loss does not explicitly say which tempting wrong answer should be suppressed.
-A DPO example says, ``under this same conflicting prompt, prefer the image-grounded answer over the text-derived answer.''
-This matters because the failure mode is not ignorance of the answer format; it is an overconfident preference for a misleading cue.
-For this reason, the most meaningful comparison is not whether DPO is universally better than SFT, but whether contrastive preference learning is better suited to cases where the model already knows how to answer many examples yet chooses the wrong modality under conflict.
+This is appropriate because the task is not open-ended preference alignment but targeted VQA correction: the correct answer should beat an incorrect answer copied from misleading text.
+The advantage over SFT is contrastive.
+SFT says only what to output, while DPO also identifies the tempting text-derived answer that should be suppressed.
 
 \subsection{Why Not Simply Ignore the Text?}
 
@@ -48,34 +37,9 @@ Our use of match and irrelevant preservation metrics is intended to check precis
 
 \subsection{What Counts as Solving Text Bias?}
 
-Text-bias mitigation should not be judged by a single number.
-If corrupted accuracy increases but match accuracy collapses, the model may simply have learned to distrust text too aggressively.
-If aux-hit decreases but accuracy does not improve, the model may have stopped copying the corrupted answer while still failing to read the image.
-If accuracy improves only on the mined training distribution, the method may be overfitting to one corruption template.
-
 We therefore define a successful correction operationally through four criteria:
 held-out corrupted accuracy should improve, incorrect aux-hit should decrease, match/irrelevant settings should be preserved, and the trend should be at least partially reproducible across nearby settings such as DPO hyperparameters or related VQA benchmarks.
 Our DocVQA results satisfy the first three criteria strongly and the fourth criterion partially: Qwen-family transfer is positive, while LLaVA and TextVQA reveal clear boundary conditions.
-
-This framing also clarifies the meaning of a corrected example.
-The strongest evidence is a case where the base model answers with the corrupted span, while the DPO model answers with the ground-truth visual answer under the same prompt.
-Such a case demonstrates actual conflict correction.
-A weaker case is one where the DPO model no longer copies the corrupted span but still answers incorrectly, indicating reduced text following without complete task success.
-Reporting both accuracy and aux-hit separates these outcomes.
-
-\subsection{Interpreting Incorrect Aux-Hit}
-
-Incorrect aux-hit is useful but should not be optimized alone.
-A lower value means fewer remaining errors are copied from corrupted text, but it does not guarantee better visual grounding.
-For example, a model could avoid the corrupted text yet hallucinate an unrelated answer.
-Therefore, successful text-bias correction should satisfy three conditions:
-\begin{enumerate}[leftmargin=*]
-    \item corrupted accuracy should increase;
-    \item incorrect aux-hit should decrease;
-    \item match and irrelevant performance should be preserved.
-\end{enumerate}
-Our main DocVQA results satisfy these conditions.
-Some negative ablations do not: they reduce neither error copying nor accuracy, or they preserve match performance while failing on corrupted examples.
 
 \subsection{Why Multi-Condition Error Mining Helps}
 

@@ -5,6 +5,32 @@ Such text can be helpful when it is correct, but it can also become a shortcut.
 When textual context conflicts with the image, a VLM may answer from the text rather than from visual evidence.
 Deng et al.~\cite{deng2025words} describe this phenomenon as ``blind faith in text'', showing that several VLMs disproportionately trust textual information under conflict.
 
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw, rounded corners=2pt, align=center, minimum height=0.78cm, inner sep=5pt},
+    bad/.style={box, draw=red!65!black, fill=red!6},
+    good/.style={box, draw=green!50!black, fill=green!7},
+    neutral/.style={box, draw=black!45, fill=black!3},
+    arrow/.style={-{Latex[length=2.2mm]}, thick}
+]
+\node[neutral, text width=2.7cm] (img) {Document image\\visual evidence};
+\node[bad, text width=2.7cm, right=0.75cm of img] (txt) {Corrupted text\\plausible wrong span};
+\node[neutral, text width=2.7cm, right=0.75cm of txt] (base) {Base VLM\\copies text span};
+\node[bad, text width=2.35cm, right=0.75cm of base] (wrong) {Wrong answer\\$y^-=\hat{y}$};
+\node[good, text width=2.7cm, below=0.75cm of base] (dpo) {DPO pair\\prefer $y^+$ over $y^-$};
+\node[good, text width=2.55cm, right=0.75cm of dpo] (correct) {Image-grounded\\answer $y^+$};
+\draw[arrow] (img) -- (txt);
+\draw[arrow] (txt) -- (base);
+\draw[arrow] (base) -- (wrong);
+\draw[arrow] (base) -- (dpo);
+\draw[arrow] (dpo) -- (correct);
+\end{tikzpicture}
+\caption{Overview of our mitigation. We mine cases where the base VLM follows corrupted auxiliary text, then train a DPO preference that ranks the image-grounded answer above the model's own text-following error.}
+\label{fig:overview}
+\end{figure*}
+
 This failure is not merely a benchmark artifact.
 In practical systems, auxiliary text is often produced by retrieval, OCR, captioning, or prior model predictions.
 All of these sources can be noisy.
@@ -33,14 +59,10 @@ Our goal is not to deny that result, but to ask whether a more targeted preferen
 Instead of training on a broad mixture of text-only, original VQA, match, corruption, and irrelevance samples, we mine the specific cases where the model follows corrupted text and directly contrast that answer with the ground truth.
 We compare DPO against GRPO-style sampled-answer optimization, auxiliary SFT preservation, model transfer, and dataset transfer.
 
-Our study is intentionally scoped as an empirical mitigation paper rather than a new benchmark proposal.
-Words or Vision already demonstrates that VLMs can over-trust text under controlled conflict.
-The remaining question is what kind of training signal most directly changes this behavior.
-This distinction matters for the scientific claim.
-If the only intervention is to remove text, the result says little about whether a VLM can learn to adjudicate between modalities.
-If the intervention is generic SFT, the model may improve because it sees more correct answers, but the mechanism of text-bias reduction remains less explicit.
-If the intervention is online RL with a scalar reward, the method depends heavily on candidate sampling and reward shaping.
-We therefore focus on preference pairs derived from actual text-following failures, where the chosen and rejected answers instantiate the desired behavioral reversal.
+Figure~\ref{fig:overview} summarizes our mitigation.
+We treat Words or Vision as evidence that the conflict exists, and focus on which training signal most directly changes the behavior.
+Removing text changes the input rather than teaching conflict resolution; generic SFT supplies correct answers without explicitly identifying the misleading answer; online RL depends on candidate sampling and reward shaping.
+We therefore use preference pairs derived from actual text-following failures, where the chosen and rejected answers instantiate the desired behavioral reversal.
 
 Our study makes three empirical findings.
 First, on DocVQA with Qwen3-VL-8B, DPO sharply improves corrupted-text robustness while reducing the rate of text-copying among remaining errors.

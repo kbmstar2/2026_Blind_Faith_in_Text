@@ -1,20 +1,5 @@
 \section{Experiments}
 
-\subsection{Experimental Questions}
-
-We organize the experiments around four questions.
-First, does text-following span DPO improve robustness to corrupted auxiliary text on a held-out DocVQA split?
-Second, does the gain come from conditional conflict correction rather than from simply ignoring text?
-We answer this by measuring match and irrelevant conditions in addition to corrupted accuracy.
-Third, is the pairwise DPO signal more effective than alternatives such as GRPO-style sampled-answer optimization or auxiliary SFT preservation?
-Fourth, how far does the mitigation transfer across datasets and model families?
-This last question is important because a method that only works on one model and one corruption template would be less convincing as a general text-bias mitigation strategy.
-
-These questions also determine how we interpret negative results.
-A failure on LLaVA-Next, for example, does not necessarily refute the DPO mechanism if the base model cannot answer DocVQA reliably in the first place.
-Instead, it identifies a boundary condition: preference optimization can redirect an existing capability, but it cannot create missing OCR/document understanding from a small preference dataset.
-Similarly, weak TextVQA transfer suggests that text-centric scene understanding has different dynamics from DocVQA conflict, not that the original DocVQA correction is spurious.
-
 \subsection{Metrics}
 
 We report three complementary metrics.
@@ -45,12 +30,9 @@ This makes the setting difficult: a model that relies on surface text can produc
 For match and irrelevant conditions, the auxiliary text is either consistent with the ground-truth answer or unrelated to the queried evidence.
 Together, these conditions separate three behaviors that would be conflated in ordinary VQA accuracy: using helpful text, ignoring irrelevant text, and correcting misleading text.
 
-\paragraph{Evaluation protocol.}
-We use exact normalized answer matching for the primary VQA accuracy metric.
+We use exact normalized answer matching for VQA accuracy.
 For incorrect aux-hit, we measure whether an incorrect prediction overlaps the corrupted auxiliary answer span after normalization.
-This metric is computed only among wrong predictions, so it should be read as a diagnostic of residual failure type rather than as an accuracy score.
-When possible, we also report corrected/regressed counts relative to the base model.
-These counts are useful because two methods can have similar aggregate accuracy while producing different trade-offs: one may correct many text-following failures and regress some previously correct examples, while another may preserve correct examples but fail to correct the targeted bias.
+Because aux-hit is computed only among wrong predictions, it diagnoses residual failure type rather than replacing accuracy.
 
 \subsection{DocVQA Main Results}
 
@@ -81,13 +63,7 @@ The multi-condition result suggests that the highest-performing variant is not c
 However, the corrupted filter remains essential: corrupted rows still require the prediction to be copied from corrupted auxiliary text.
 The additional match, irrelevant, and no-text errors act as weak condition-specific regularizers rather than replacing the text-following signal.
 
-\paragraph{Qualitative error taxonomy.}
-Manual inspection of representative examples suggests three common post-training outcomes.
-The desired outcome is \emph{visual correction}: the base model copies the corrupted span, while the DPO model answers with the ground-truth document content.
-A partial outcome is \emph{text rejection without recovery}: the DPO model avoids the corrupted span but still fails to identify the correct visual answer.
-An undesirable outcome is \emph{overcorrection}: the DPO model becomes less willing to use text even when the auxiliary text is reliable.
 The main DocVQA result is encouraging because it increases corrupted accuracy and lowers aux-hit without large match/irrelevant degradation.
-The TextVQA and LLaVA results show why all three outcomes must be tracked; reducing text copying alone is not enough if the model lacks the OCR or answer-format competence needed for recovery.
 
 \subsection{Hyperparameter and Construction Ablations}
 
@@ -113,11 +89,8 @@ $\beta$ & Rank & Acc. & Aux-hit & Corr./Reg. & Match/Irr. \\
 }
 \end{table}
 
-We also test whether simply duplicating the same corrupted preference pair under multiple prompt conditions is sufficient.
-Prompt-augmented counterfactual DPO expands each mined corrupted failure into corrupted, no-text, match, and irrelevant prompt wrappers, but keeps the same rejected answer.
-This ties plain rank-16 DPO at 0.915 corrupted accuracy and 47.1\% incorrect aux-hit.
-By contrast, multi-condition error-mined DPO uses the actual failed prediction from each condition as the rejected answer, improving to 0.920 accuracy and 43.8\% incorrect aux-hit.
-This suggests that condition-specific rejected answers are more useful than prompt augmentation alone.
+Prompt-augmented counterfactual DPO, which reuses the same rejected answer across corrupted, no-text, match, and irrelevant wrappers, ties plain rank-16 DPO at 0.915 accuracy and 47.1\% aux-hit.
+Multi-condition error-mined DPO instead uses the actual failed prediction from each condition as the rejected answer, improving to 0.920 accuracy and 43.8\% aux-hit.
 
 \subsection{DPO versus GRPO}
 
