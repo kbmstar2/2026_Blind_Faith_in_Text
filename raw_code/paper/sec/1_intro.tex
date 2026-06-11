@@ -7,26 +7,7 @@ Deng et al.~\cite{deng2025words} describe this phenomenon as ``blind faith in te
 
 \begin{figure*}[t]
 \centering
-\begin{tikzpicture}[
-    font=\small,
-    box/.style={draw, rounded corners=2pt, align=center, minimum height=0.78cm, inner sep=5pt},
-    bad/.style={box, draw=red!65!black, fill=red!6},
-    good/.style={box, draw=green!50!black, fill=green!7},
-    neutral/.style={box, draw=black!45, fill=black!3},
-    arrow/.style={-{Latex[length=2.2mm]}, thick}
-]
-\node[neutral, text width=2.7cm] (img) {Document image\\visual evidence};
-\node[bad, text width=2.7cm, right=0.75cm of img] (txt) {Corrupted text\\plausible wrong span};
-\node[neutral, text width=2.7cm, right=0.75cm of txt] (base) {Base VLM\\copies text span};
-\node[bad, text width=2.35cm, right=0.75cm of base] (wrong) {Wrong answer\\$y^-=\hat{y}$};
-\node[good, text width=2.7cm, below=0.75cm of base] (dpo) {DPO pair\\prefer $y^+$ over $y^-$};
-\node[good, text width=2.55cm, right=0.75cm of dpo] (correct) {Image-grounded\\answer $y^+$};
-\draw[arrow] (img) -- (txt);
-\draw[arrow] (txt) -- (base);
-\draw[arrow] (base) -- (wrong);
-\draw[arrow] (base) -- (dpo);
-\draw[arrow] (dpo) -- (correct);
-\end{tikzpicture}
+\includegraphics[width=0.92\textwidth]{fig/figure_1.png}
 \caption{Overview of our mitigation. We mine cases where the base VLM follows corrupted auxiliary text, then train a DPO preference that ranks the image-grounded answer above the model's own text-following error.}
 \label{fig:overview}
 \end{figure*}
