@@ -68,16 +68,23 @@ DPO $\rightarrow$ GRPO & DPO & \textbf{0.900} & 60.0\% \\
 DPO-to-GRPO changes only a few held-out predictions relative to DPO and does not improve accuracy.
 This supports our hypothesis: when high-precision chosen/rejected pairs are available, direct pairwise optimization provides a clearer learning signal than free-form sampled-answer rewards.
 
-\subsection{SFT Preservation Ablation}
+\subsection{SFT: Prior Mitigation and Our Ablation}
 
-We also test whether adding supervised fine-tuning (SFT) anchors can preserve non-corrupted behavior.
-SFT is a plausible baseline because it directly teaches the model to output correct answers.
+The original Words or Vision study already evaluates SFT with text augmentation as a mitigation strategy~\cite{deng2025words}.
+That SFT setting uses a broader training mixture, including original VQA, text-only, match, corruption, and irrelevance samples, and shows that SFT can reduce text reliance while maintaining the ability to benefit from matched text.
+This is an important baseline and motivates our own mitigation study.
+
+Our experiment is different.
+We do not reproduce the full augmented SFT recipe from Deng et al.~\cite{deng2025words}.
+Instead, we test a narrower question: after constructing text-following DPO pairs, can an auxiliary SFT preservation loss on match/irrelevant examples further stabilize the model?
+This is a preservation ablation, not a claim that SFT in general is ineffective.
+SFT is plausible because it directly teaches the model to output correct answers.
 However, the central error in our setting is not simply that the model does not know the answer; it is that the model prefers a misleading textual answer over visual evidence.
 SFT provides only a positive target, while DPO explicitly contrasts the image-grounded answer against the text-following wrong answer.
 
 Our SFT experiment uses auxiliary preservation data from match and irrelevant conditions and mixes it with span DPO.
 As shown in Table~\ref{tab:vqav2}, this does not improve over pure DPO on VQAv2: corrupted accuracy decreases from 0.645 to 0.635, incorrect aux-hit increases from 40.8\% to 42.5\%, and match/irrelevant preservation remains unchanged.
-Thus, in our experiments, SFT acts as a negative preservation ablation rather than the main mitigation method.
+Thus, in our experiments, auxiliary SFT preservation acts as a negative ablation, while the prior full SFT augmentation result remains a valid mitigation baseline from the original work.
 
 \subsection{VQAv2 Transfer Check}
 

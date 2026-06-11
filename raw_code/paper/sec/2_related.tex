@@ -5,6 +5,10 @@ VLMs are trained to fuse visual and textual inputs, but fusion can become asymme
 The most directly related work is Words or Vision~\cite{deng2025words}, which introduces corrupted textual variations and shows that VLMs may trust text over vision when the two conflict.
 Our work follows this diagnostic setting but focuses on mitigation through preference optimization.
 Rather than only measuring the degradation under corrupted text, we use the model's own corrupted-text failures as training signal.
+Deng et al.~\cite{deng2025words} also study SFT with text augmentation and show that increasing SFT data reduces reliance on corrupted or irrelevant text while preserving the ability to use matched text.
+They further note that text-only data helps prevent models from rejecting text indiscriminately.
+We build on this insight: the goal is conditional text use, not blanket text removal.
+Our contribution is to replace broad SFT augmentation with model-specific preference pairs mined from actual text-following failures.
 
 \paragraph{Document and visual question answering.}
 DocVQA~\cite{mathew2021docvqa} evaluates question answering over document images, requiring OCR, layout understanding, and reasoning over visual text.

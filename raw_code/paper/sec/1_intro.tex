@@ -28,6 +28,9 @@ This gives a high-precision preference signal without manual labeling.
 We instantiate this idea with Direct Preference Optimization (DPO)~\cite{rafailov2023dpo}.
 Unlike online reinforcement learning methods such as PPO or GRPO~\cite{shao2024deepseekmath}, DPO directly optimizes pairwise preferences.
 This is well aligned with our setting: the contrastive pair is already available as \{image-grounded answer, text-following wrong answer\}.
+Prior work already showed that supervised fine-tuning (SFT) with text augmentation can mitigate blind faith in text~\cite{deng2025words}.
+Our goal is not to deny that result, but to ask whether a more targeted preference signal can address the same failure mode.
+Instead of training on a broad mixture of text-only, original VQA, match, corruption, and irrelevance samples, we mine the specific cases where the model follows corrupted text and directly contrast that answer with the ground truth.
 We compare DPO against GRPO-style sampled-answer optimization, auxiliary SFT preservation, model transfer, and dataset transfer.
 
 Our study makes three empirical findings.
@@ -40,5 +43,5 @@ We summarize our contributions as follows:
 \begin{itemize}[leftmargin=*]
     \item We define an automatic text-following error mining procedure for corrupted-text VQA, requiring both incorrectness and overlap between the wrong prediction and corrupted auxiliary text.
     \item We show that DPO on these mined pairs substantially reduces text bias on DocVQA and transfers directionally to VQAv2 and Qwen2-VL.
-    \item We compare DPO, GRPO, SFT preservation, multi-condition error mining, and model transfer, clarifying when preference optimization helps and when it does not.
+    \item We position DPO relative to the SFT mitigation studied by Deng et al.~\cite{deng2025words}, and compare it with GRPO, auxiliary SFT preservation, multi-condition error mining, and model transfer.
 \end{itemize}

@@ -6,6 +6,9 @@ The corrupted-text setting gives unusually clean preference pairs.
 For many failures, the model's wrong answer is directly copied from the corrupted auxiliary text.
 Thus the comparison is explicit: the image-grounded answer should be preferred over the text-following wrong answer.
 DPO optimizes exactly this comparison.
+This complements, rather than invalidates, the SFT mitigation in Words or Vision~\cite{deng2025words}.
+SFT with text augmentation teaches the model from a balanced mixture of cases and can reduce broad text reliance.
+Our DPO variant instead uses a narrower but sharper signal: for each mined failure, it tells the model which specific text-derived answer should lose to the visual answer.
 In contrast, GRPO must first sample useful candidate answers and then rely on a hand-designed reward.
 If the sampled candidates rarely contain the correct answer, or if most candidates are similar text-following errors, the relative reward signal is weak.
 This explains why GRPO logs can show diagnostic reward events while greedy held-out predictions barely change.
