@@ -13,6 +13,22 @@ In contrast, GRPO must first sample useful candidate answers and then rely on a 
 If the sampled candidates rarely contain the correct answer, or if most candidates are similar text-following errors, the relative reward signal is weak.
 This explains why GRPO logs can show diagnostic reward events while greedy held-out predictions barely change.
 
+\paragraph{Relation to ground-truth answers.}
+Our DPO construction uses the benchmark answer as the chosen response.
+This is appropriate because our goal is not open-ended human preference alignment, but targeted correction of VQA conflict errors.
+In ordinary preference alignment, a chosen response may be selected because it is more helpful, harmless, or stylistically preferred.
+In VQA, the preference is more concrete: the correct answer should be preferred over an incorrect answer that was copied from misleading text.
+The ground truth therefore acts as an anchor for visual correctness, while the rejected response identifies the model's specific text-biased failure.
+This makes our DPO closer to supervised preference correction than to broad conversational RLHF.
+
+\paragraph{Why DPO can outperform SFT here.}
+The key advantage of DPO is the contrastive form of the signal.
+An SFT example says, ``given this prompt, output the correct answer.''
+The model may learn that answer pattern, but the loss does not explicitly say which tempting wrong answer should be suppressed.
+A DPO example says, ``under this same conflicting prompt, prefer the image-grounded answer over the text-derived answer.''
+This matters because the failure mode is not ignorance of the answer format; it is an overconfident preference for a misleading cue.
+For this reason, the most meaningful comparison is not whether DPO is universally better than SFT, but whether contrastive preference learning is better suited to cases where the model already knows how to answer many examples yet chooses the wrong modality under conflict.
+
 \subsection{Why Not Simply Ignore the Text?}
 
 Ignoring auxiliary text is an appealing but incomplete baseline.
@@ -29,6 +45,27 @@ DPO is appropriate because it changes the model's preference in exactly the conf
 This is different from input ablation or prompt-level instruction to ignore text.
 The latter can reduce exposure to misleading text, but it does not teach the model which answer should be preferred when both visual evidence and misleading text are present.
 Our use of match and irrelevant preservation metrics is intended to check precisely this point: a successful method should improve corrupted robustness without collapsing into text avoidance.
+
+\subsection{What Counts as Solving Text Bias?}
+
+Text-bias mitigation should not be judged by a single number.
+If corrupted accuracy increases but match accuracy collapses, the model may simply have learned to distrust text too aggressively.
+If aux-hit decreases but accuracy does not improve, the model may have stopped copying the corrupted answer while still failing to read the image.
+If accuracy improves only on the mined training distribution, the method may be overfitting to one corruption template.
+
+We therefore define a successful correction operationally through four criteria.
+First, corrupted accuracy should improve on a held-out split that was not used to construct preference pairs.
+Second, incorrect aux-hit should decrease among remaining wrong answers, indicating that fewer errors are direct copies of the misleading auxiliary text.
+Third, match and irrelevant settings should be preserved, showing that the model has not simply learned text avoidance.
+Fourth, the trend should be at least partially reproducible across nearby settings, such as different DPO hyperparameters or related VQA benchmarks.
+Our DocVQA results satisfy the first three criteria strongly and the fourth criterion partially: Qwen-family transfer is positive, while LLaVA and TextVQA reveal clear boundary conditions.
+
+This framing also clarifies the meaning of a corrected example.
+The strongest evidence is a case where the base model answers with the corrupted span, while the DPO model answers with the ground-truth visual answer under the same prompt.
+Such a case demonstrates actual conflict correction.
+A weaker but still useful case is one where the DPO model no longer copies the corrupted span, even if the final answer remains wrong.
+That indicates reduced text following but not complete task success.
+Our metrics separate these two outcomes by reporting both accuracy and aux-hit.
 
 \subsection{Interpreting Incorrect Aux-Hit}
 

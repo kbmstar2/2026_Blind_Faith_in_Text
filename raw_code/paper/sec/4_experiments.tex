@@ -1,5 +1,20 @@
 \section{Experiments}
 
+\subsection{Experimental Questions}
+
+We organize the experiments around four questions.
+First, does text-following span DPO improve robustness to corrupted auxiliary text on a held-out DocVQA split?
+Second, does the gain come from conditional conflict correction rather than from simply ignoring text?
+We answer this by measuring match and irrelevant conditions in addition to corrupted accuracy.
+Third, is the pairwise DPO signal more effective than alternatives such as GRPO-style sampled-answer optimization or auxiliary SFT preservation?
+Fourth, how far does the mitigation transfer across datasets and model families?
+This last question is important because a method that only works on one model and one corruption template would be less convincing as a general text-bias mitigation strategy.
+
+These questions also determine how we interpret negative results.
+A failure on LLaVA-Next, for example, does not necessarily refute the DPO mechanism if the base model cannot answer DocVQA reliably in the first place.
+Instead, it identifies a boundary condition: preference optimization can redirect an existing capability, but it cannot create missing OCR/document understanding from a small preference dataset.
+Similarly, weak TextVQA transfer suggests that text-centric scene understanding has different dynamics from DocVQA conflict, not that the original DocVQA correction is spurious.
+
 \subsection{Metrics}
 
 We report three complementary metrics.
@@ -22,6 +37,20 @@ It trains for 900 DPO steps with LoRA rank 16, alpha 32, learning rate $10^{-5}$
 All reported transfer experiments use the same evaluation code and the same model family-specific prompt template used during mining.
 This matters because our LLaVA-Next experiments show strong sensitivity to task and template compatibility.
 We therefore interpret LLaVA results as boundary evidence rather than as a claim that the method is model-agnostic.
+
+\paragraph{Corruption construction.}
+For DocVQA, corrupted auxiliary text is created by replacing the answer-bearing textual hint with a plausible but incorrect answer span.
+The corrupted span is intentionally answer-like rather than random noise.
+This makes the setting difficult: a model that relies on surface text can produce a fluent and plausible answer, while a model that checks the image must reject the hint.
+For match and irrelevant conditions, the auxiliary text is either consistent with the ground-truth answer or unrelated to the queried evidence.
+Together, these conditions separate three behaviors that would be conflated in ordinary VQA accuracy: using helpful text, ignoring irrelevant text, and correcting misleading text.
+
+\paragraph{Evaluation protocol.}
+We use exact normalized answer matching for the primary VQA accuracy metric.
+For incorrect aux-hit, we measure whether an incorrect prediction overlaps the corrupted auxiliary answer span after normalization.
+This metric is computed only among wrong predictions, so it should be read as a diagnostic of residual failure type rather than as an accuracy score.
+When possible, we also report corrected/regressed counts relative to the base model.
+These counts are useful because two methods can have similar aggregate accuracy while producing different trade-offs: one may correct many text-following failures and regress some previously correct examples, while another may preserve correct examples but fail to correct the targeted bias.
 
 \subsection{DocVQA Main Results}
 
@@ -51,6 +80,14 @@ Multi-cond. error DPO & \textbf{0.920} & \textbf{43.8\%} & 41 / 0 \\
 The multi-condition result suggests that the highest-performing variant is not corrupted-only.
 However, the corrupted filter remains essential: corrupted rows still require the prediction to be copied from corrupted auxiliary text.
 The additional match, irrelevant, and no-text errors act as weak condition-specific regularizers rather than replacing the text-following signal.
+
+\paragraph{Qualitative error taxonomy.}
+Manual inspection of representative examples suggests three common post-training outcomes.
+The desired outcome is \emph{visual correction}: the base model copies the corrupted span, while the DPO model answers with the ground-truth document content.
+A partial outcome is \emph{text rejection without recovery}: the DPO model avoids the corrupted span but still fails to identify the correct visual answer.
+An undesirable outcome is \emph{overcorrection}: the DPO model becomes less willing to use text even when the auxiliary text is reliable.
+The main DocVQA result is encouraging because it increases corrupted accuracy and lowers aux-hit without large match/irrelevant degradation.
+The TextVQA and LLaVA results show why all three outcomes must be tracked; reducing text copying alone is not enough if the model lacks the OCR or answer-format competence needed for recovery.
 
 \subsection{Hyperparameter and Construction Ablations}
 
