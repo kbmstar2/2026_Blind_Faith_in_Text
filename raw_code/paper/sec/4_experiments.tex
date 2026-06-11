@@ -140,6 +140,13 @@ Our SFT experiment uses auxiliary preservation data from match and irrelevant co
 As shown in Table~\ref{tab:vqav2}, this does not improve over pure DPO on VQAv2: corrupted accuracy decreases from 0.645 to 0.635, incorrect aux-hit increases from 40.8\% to 42.5\%, and match/irrelevant preservation remains unchanged.
 Thus, in our experiments, auxiliary SFT preservation acts as a negative ablation, while the prior full SFT augmentation result remains a valid mitigation baseline from the original work.
 
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.96\textwidth]{fig/figure_2.png}
+\caption{Comparison of mitigation signals and representative outcomes. The SFT panel reports the prior Words or Vision text-augmentation result on VQAv2 with Qwen2-VL-7B, while the DPO panel reports our DocVQA results with Qwen3-VL-8B. The figure is therefore not a direct dataset-matched comparison; it illustrates that SFT can mitigate text bias through broad supervised augmentation, whereas our DPO approach targets model-specific text-following errors through pairwise preference learning.}
+\label{fig:sft-dpo-comparison}
+\end{figure*}
+
 \subsection{VQAv2 Transfer Check}
 
 We repeat the disjoint split protocol on VQAv2.

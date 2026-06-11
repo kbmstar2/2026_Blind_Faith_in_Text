@@ -5,8 +5,8 @@ We study whether preference optimization can reduce this failure mode without sa
 The goal is not to teach the model to ignore all text: auxiliary text is often useful when it agrees with the image, and the model usually does not know in advance whether the text is reliable.
 Starting from corrupted-text evaluations, we mine model-specific text-following errors: cases where the model is wrong and its wrong answer is copied from the corrupted auxiliary text.
 We then train VLMs with Direct Preference Optimization (DPO), preferring the image-grounded answer over the model's own text-following error.
-On DocVQA with Qwen3-VL-8B, text-following span DPO improves corrupted accuracy from 0.715 to 0.915 and reduces the fraction of incorrect answers copied from corrupted text from 89.5\% to 47.1\%.
-A multi-condition error-mined extension further improves accuracy to 0.920 and reduces this text-following rate to 43.8\%.
+On DocVQA with Qwen3-VL-8B, text-following span DPO substantially improves corrupted-text robustness and reduces the fraction of remaining errors copied from misleading text.
+A multi-condition error-mined extension further strengthens this effect.
 By contrast, GRPO-style sampled-answer optimization and auxiliary SFT preservation do not improve over DPO.
 Experiments on VQAv2 and transfer to Qwen2-VL and LLaVA-Next show that the method works best when the base VLM already has sufficient visual and OCR competence.
 These results suggest that high-precision preference pairs are an effective and practical mechanism for correcting text bias in VLMs, while also revealing clear boundary conditions for the approach.
