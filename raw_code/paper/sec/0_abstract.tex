@@ -2,6 +2,7 @@
 Vision-language models (VLMs) often treat textual context as a shortcut, even when that text conflicts with visual evidence.
 This ``blind faith in text'' is especially problematic in document and visual question answering, where auxiliary text may be incomplete, stale, adversarial, or automatically retrieved.
 We study whether preference optimization can reduce this failure mode without sacrificing normal visual question answering performance.
+The goal is not to teach the model to ignore all text: auxiliary text is often useful when it agrees with the image, and the model usually does not know in advance whether the text is reliable.
 Starting from corrupted-text evaluations, we mine model-specific text-following errors: cases where the model is wrong and its wrong answer is copied from the corrupted auxiliary text.
 We then train VLMs with Direct Preference Optimization (DPO), preferring the image-grounded answer over the model's own text-following error.
 On DocVQA with Qwen3-VL-8B, text-following span DPO improves corrupted accuracy from 0.715 to 0.915 and reduces the fraction of incorrect answers copied from corrupted text from 89.5\% to 47.1\%.

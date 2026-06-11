@@ -68,6 +68,17 @@ DPO $\rightarrow$ GRPO & DPO & \textbf{0.900} & 60.0\% \\
 DPO-to-GRPO changes only a few held-out predictions relative to DPO and does not improve accuracy.
 This supports our hypothesis: when high-precision chosen/rejected pairs are available, direct pairwise optimization provides a clearer learning signal than free-form sampled-answer rewards.
 
+\subsection{SFT Preservation Ablation}
+
+We also test whether adding supervised fine-tuning (SFT) anchors can preserve non-corrupted behavior.
+SFT is a plausible baseline because it directly teaches the model to output correct answers.
+However, the central error in our setting is not simply that the model does not know the answer; it is that the model prefers a misleading textual answer over visual evidence.
+SFT provides only a positive target, while DPO explicitly contrasts the image-grounded answer against the text-following wrong answer.
+
+Our SFT experiment uses auxiliary preservation data from match and irrelevant conditions and mixes it with span DPO.
+As shown in Table~\ref{tab:vqav2}, this does not improve over pure DPO on VQAv2: corrupted accuracy decreases from 0.645 to 0.635, incorrect aux-hit increases from 40.8\% to 42.5\%, and match/irrelevant preservation remains unchanged.
+Thus, in our experiments, SFT acts as a negative preservation ablation rather than the main mitigation method.
+
 \subsection{VQAv2 Transfer Check}
 
 We repeat the disjoint split protocol on VQAv2.

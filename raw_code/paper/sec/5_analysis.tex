@@ -10,6 +10,23 @@ In contrast, GRPO must first sample useful candidate answers and then rely on a 
 If the sampled candidates rarely contain the correct answer, or if most candidates are similar text-following errors, the relative reward signal is weak.
 This explains why GRPO logs can show diagnostic reward events while greedy held-out predictions barely change.
 
+\subsection{Why Not Simply Ignore the Text?}
+
+Ignoring auxiliary text is an appealing but incomplete baseline.
+It would avoid some corrupted-text failures, but it does not solve the actual decision problem faced by a VLM.
+At inference time, the model is not given a label saying whether the text is matched, irrelevant, or corrupted.
+If the model learns to discard text wholesale, it can lose useful information in match cases and may fail to exploit reliable OCR or retrieved context.
+
+Our objective is therefore not ``use less text'' but ``use text conditionally''.
+The model should keep using textual context when it is visually supported and reject it when it conflicts with the image.
+DPO is appropriate because it changes the model's preference in exactly the conflict cases we can identify:
+\begin{equation}
+\text{image-grounded answer} \succ \text{text-following wrong answer}.
+\end{equation}
+This is different from input ablation or prompt-level instruction to ignore text.
+The latter can reduce exposure to misleading text, but it does not teach the model which answer should be preferred when both visual evidence and misleading text are present.
+Our use of match and irrelevant preservation metrics is intended to check precisely this point: a successful method should improve corrupted robustness without collapsing into text avoidance.
+
 \subsection{Interpreting Incorrect Aux-Hit}
 
 Incorrect aux-hit is useful but should not be optimized alone.

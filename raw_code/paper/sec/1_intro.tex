@@ -11,6 +11,13 @@ All of these sources can be noisy.
 If a VLM over-trusts such text, the model can produce confident but visually ungrounded answers.
 For document VQA, this is particularly important: the model must decide whether the image or the accompanying text should be trusted when they disagree.
 
+A natural objection is that the model could simply ignore the auxiliary text whenever corruption is possible.
+This is not a satisfactory solution.
+First, in real use the system is not told whether the text is corrupted, matched, or irrelevant.
+Second, auxiliary text is often genuinely useful: when it matches the image, ignoring it can remove information that helps the model answer.
+Third, blind text removal does not teach conflict resolution; it only changes the input distribution.
+The desired behavior is conditional trust: use text when it is supported by the image, but reject it when it contradicts visual evidence.
+
 We ask a targeted question:
 \emph{Can we reduce text-following failures by directly training a VLM to prefer image-grounded answers over its own corrupted-text errors?}
 Our key observation is that the corrupted-text setting naturally produces preference pairs.
@@ -21,7 +28,7 @@ This gives a high-precision preference signal without manual labeling.
 We instantiate this idea with Direct Preference Optimization (DPO)~\cite{rafailov2023dpo}.
 Unlike online reinforcement learning methods such as PPO or GRPO~\cite{shao2024deepseekmath}, DPO directly optimizes pairwise preferences.
 This is well aligned with our setting: the contrastive pair is already available as \{image-grounded answer, text-following wrong answer\}.
-We compare DPO against GRPO-style sampled-answer optimization, preservation SFT, model transfer, and dataset transfer.
+We compare DPO against GRPO-style sampled-answer optimization, auxiliary SFT preservation, model transfer, and dataset transfer.
 
 Our study makes three empirical findings.
 First, on DocVQA with Qwen3-VL-8B, DPO sharply improves corrupted-text robustness while reducing the rate of text-copying among remaining errors.
