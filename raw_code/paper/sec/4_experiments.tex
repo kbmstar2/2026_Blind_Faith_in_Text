@@ -142,8 +142,74 @@ Thus, in our experiments, auxiliary SFT preservation acts as a negative ablation
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.96\textwidth]{fig/figure_2.png}
-\caption{Comparison of mitigation signals and representative outcomes. The SFT panel reports the prior Words or Vision text-augmentation result on VQAv2 with Qwen2-VL-7B, while the DPO panel reports our DocVQA results with Qwen3-VL-8B. The figure is therefore not a direct dataset-matched comparison; it illustrates that SFT can mitigate text bias through broad supervised augmentation, whereas our DPO approach targets model-specific text-following errors through pairwise preference learning.}
+\begin{minipage}{0.47\textwidth}
+\centering
+\small
+\textbf{Prior SFT mitigation} \\
+{\footnotesize Words or Vision, VQAv2, Qwen2-VL-7B}
+\vspace{0.4em}
+\begin{tikzpicture}[x=1cm,y=0.043cm]
+    \draw[gray!45] (0,0) -- (4.8,0);
+    \draw[gray!45] (0,0) -- (0,100);
+    \foreach \y in {0,25,50,75,100} {
+        \draw[gray!18] (0,\y) -- (4.8,\y);
+        \node[anchor=east,font=\scriptsize] at (-0.08,\y) {\y};
+    }
+    \fill[gray!35] (0.75,0) rectangle (1.18,50.79);
+    \fill[blue!45] (1.23,0) rectangle (1.66,82.72);
+    \fill[gray!35] (3.00,0) rectangle (3.43,75.75);
+    \fill[blue!45] (3.48,0) rectangle (3.91,84.58);
+    \node[font=\scriptsize] at (0.97,55.5) {50.8};
+    \node[font=\scriptsize] at (1.45,87.5) {82.7};
+    \node[font=\scriptsize] at (3.22,80.5) {75.8};
+    \node[font=\scriptsize] at (3.70,89.3) {84.6};
+    \node[font=\scriptsize,align=center] at (1.20,-10) {Corruption\\Acc.};
+    \node[font=\scriptsize,align=center] at (3.45,-10) {Macro\\Acc.};
+    \fill[gray!35] (0.55,-24) rectangle (0.78,-18);
+    \node[anchor=west,font=\scriptsize] at (0.85,-21) {Original};
+    \fill[blue!45] (2.00,-24) rectangle (2.23,-18);
+    \node[anchor=west,font=\scriptsize] at (2.30,-21) {SFT};
+    \node[rotate=90,font=\scriptsize] at (-0.55,50) {Accuracy (\%)};
+\end{tikzpicture}
+\end{minipage}
+\hfill
+\begin{minipage}{0.50\textwidth}
+\centering
+\small
+\textbf{Our DPO mitigation} \\
+{\footnotesize DocVQA, Qwen3-VL-8B}
+\vspace{0.4em}
+\begin{tikzpicture}[x=1cm,y=0.043cm]
+    \draw[gray!45] (0,0) -- (6.0,0);
+    \draw[gray!45] (0,0) -- (0,100);
+    \draw[red!55!black] (6.0,0) -- (6.0,100);
+    \foreach \y in {0,25,50,75,100} {
+        \draw[gray!18] (0,\y) -- (6.0,\y);
+        \node[anchor=east,font=\scriptsize] at (-0.08,\y) {\y};
+        \node[anchor=west,font=\scriptsize,red!55!black] at (6.08,\y) {\y};
+    }
+    \fill[gray!35] (0.58,0) rectangle (1.08,71.5);
+    \fill[orange!45] (1.80,0) rectangle (2.30,70.5);
+    \fill[green!38] (3.02,0) rectangle (3.52,91.5);
+    \fill[green!60!black] (4.24,0) rectangle (4.74,92.0);
+    \node[font=\scriptsize] at (0.83,76.3) {71.5};
+    \node[font=\scriptsize] at (2.05,75.3) {70.5};
+    \node[font=\scriptsize] at (3.27,96.0) {91.5};
+    \node[font=\scriptsize] at (4.49,96.5) {92.0};
+    \draw[red!65!black,thick] (0.83,89.5) -- (2.05,89.8) -- (3.27,47.1) -- (4.49,43.8);
+    \foreach \x/\y/\v in {0.83/89.5/89.5,2.05/89.8/89.8,3.27/47.1/47.1,4.49/43.8/43.8} {
+        \filldraw[white,draw=red!65!black,thick] (\x,\y) circle [radius=0.065cm];
+        \node[font=\scriptsize,red!65!black] at (\x,\y+8) {\v};
+    }
+    \node[font=\scriptsize] at (0.83,-10) {Base};
+    \node[font=\scriptsize] at (2.05,-10) {GRPO};
+    \node[font=\scriptsize] at (3.27,-10) {DPO};
+    \node[font=\scriptsize,align=center] at (4.49,-10) {Multi-cond.\\DPO};
+    \node[rotate=90,font=\scriptsize] at (-0.55,50) {Accuracy (\%)};
+    \node[rotate=90,font=\scriptsize,red!55!black] at (6.58,50) {Incorrect aux-hit (\%)};
+\end{tikzpicture}
+\end{minipage}
+\caption{Representative SFT and DPO mitigation results. Left: the prior Words or Vision text-augmentation SFT result on VQAv2 with Qwen2-VL-7B. Right: our DocVQA results with Qwen3-VL-8B, where bars show corrupted accuracy and the red line shows incorrect aux-hit. These panels are not a dataset-matched comparison; they summarize complementary evidence that text bias can be reduced by either broad SFT augmentation or targeted preference learning.}
 \label{fig:sft-dpo-comparison}
 \end{figure*}
 
