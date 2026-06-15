@@ -30,6 +30,28 @@ For each mined error, we construct a DPO pair:
 \end{equation}
 where $y^+$ is the image-grounded answer and $y^-$ is the model's text-following wrong answer.
 We call this dataset \emph{text-following span DPO}.
+Algorithm~\ref{alg:tf_dpo} summarizes the full mining and pair-generation procedure.
+
+\begin{algorithm}[t]
+\caption{Automatic Text-Following Error Mining and DPO Pair Generation}
+\label{alg:tf_dpo}
+\small
+\begin{algorithmic}[1]
+\Require Corrupted VQA dataset $\mathcal{D}$
+\State $\mathcal{P} \leftarrow \emptyset$
+\For{each sample $(I,q,T_c,y^*) \in \mathcal{D}$}
+    \State $\hat{y} \leftarrow \mathrm{VLM}(I,q,T_c)$
+    \If{$\hat{y} \neq y^*$ \textbf{and} $\mathrm{Match}(\hat{y},T_c)$}
+        \Statex \hspace{\algorithmicindent}\textit{High-precision text-following failure}
+        \State $x \leftarrow (I,q,T_c)$
+        \State $y^+ \leftarrow y^*$
+        \State $y^- \leftarrow \hat{y}$
+        \State $\mathcal{P} \leftarrow \mathcal{P} \cup \{(x,y^+,y^-)\}$
+    \EndIf
+\EndFor
+\State Optimize the VLM with DPO on $\mathcal{P}$
+\end{algorithmic}
+\end{algorithm}
 
 \paragraph{Why error mining matters.}
 The filtering step is not merely a data-cleaning heuristic.
